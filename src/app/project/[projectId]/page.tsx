@@ -712,7 +712,7 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
 
             // Parse mentions
             const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
-            const mentions: any[] = [];
+            const mentions = [];
             let match;
 
             while ((match = mentionRegex.exec(currentPrompt)) !== null) {
@@ -745,7 +745,7 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
             }
 
             // Determine agents to process
-            let agentsToProcess: any = [];
+            let agentsToProcess: string | any[] = [];
 
             if (mentions.length > 0) {
                 agentsToProcess = mentions.map(mention => ({
@@ -775,47 +775,13 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                 setLastUsedAgentId(agent.id);
 
                 // Build context based on agent's context_type
-                let contextMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+                let contextMessages = [];
 
                 // Add system message with agent instructions
                 contextMessages.push({
                     role: 'system',
                     content: `You are an AI assistant named ${agent.name}. ${agent.instructions || ''}`
                 });
-
-                // Handle different context types
-                if (agent.context_type === 'all') {
-                    // Include all messages from the current chat
-                    const chatMessages = messages
-                        .filter(msg => msg.chat_id === selectedChatId)
-                        .map(msg => ({
-                            role: msg.role as 'user' | 'assistant',
-                            content: msg.content as string
-                        }));
-
-                    contextMessages = [...contextMessages, ...chatMessages];
-
-                } else if (agent.context_type === 'agent') {
-                    // Include only messages from this specific agent
-                    const agentMessages = messages
-                        .filter(msg => msg.chat_id === selectedChatId && msg.agent_id === agent.id)
-                        .map(msg => ({
-                            role: msg.role as 'user' | 'assistant',
-                            content: msg.content as string
-                        }));
-
-                    contextMessages = [...contextMessages, ...agentMessages];
-
-                } else if (agent.context_type === 'fresh') {
-                    // No additional context beyond system message
-                    // Just add the current prompt if retrying
-                    if (retryLastMessage) {
-                        contextMessages.push({
-                            role: 'user',
-                            content: currentPrompt
-                        });
-                    }
-                }
 
                 // Add context from saved responses if context_folder is specified
                 if (agent.context_folder) {
@@ -833,27 +799,71 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                         } else if (savedResponses && savedResponses.length > 0) {
                             // Add saved responses as system messages for context
                             const folderContext = savedResponses.map((response: any) => ({
-                                role: 'system' as const,
+                                role: 'system',
                                 content: `[Saved Context: ${response.title}] ${response.content}`
                             }));
 
-                            contextMessages = [...folderContext, ...contextMessages];
+                            contextMessages.push(...folderContext);
                         }
                     } catch (error) {
                         console.error('Error loading context folder:', error);
                     }
                 }
 
-                // Ensure we have the current user message in context for fresh mode
-                if (agent.context_type === 'fresh' && !retryLastMessage) {
+                // Handle different context types
+                if (agent.context_type === 'fresh') {
+                    // No chat messages in context - only system messages and current prompt
                     contextMessages.push({
                         role: 'user',
                         content: currentPrompt
                     });
+
+                } else if (agent.context_type === 'all') {
+                    // Include all messages from the current chat
+                    const allChatMessages = messages
+                        .filter(msg => msg.chat_id === selectedChatId)
+                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                        .map(msg => ({
+                            role: msg.role,
+                            content: msg.content
+                        }));
+
+                    contextMessages.push(...allChatMessages);
+
+                    // Add current prompt if not retrying (since it won't be in messages yet)
+                    if (!retryLastMessage) {
+                        contextMessages.push({
+                            role: 'user',
+                            content: currentPrompt
+                        });
+                    }
+
+                } else if (agent.context_type === 'agent') {
+                    // Include only messages from/to this specific agent
+                    const agentMessages = messages
+                        .filter(msg =>
+                            msg.chat_id === selectedChatId &&
+                            (msg.agent_id === agent.id || msg.role === 'user')
+                        )
+                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                        .map(msg => ({
+                            role: msg.role,
+                            content: msg.content
+                        }));
+
+                    contextMessages.push(...agentMessages);
+
+                    // Add current prompt if not retrying
+                    if (!retryLastMessage) {
+                        contextMessages.push({
+                            role: 'user',
+                            content: currentPrompt
+                        });
+                    }
                 }
 
                 // Ensure strict alternation and proper ordering
-                const finalMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+                const finalMessages = [];
 
                 // Keep system messages at the beginning
                 const systemMessages = contextMessages.filter(msg => msg.role === 'system');
@@ -862,7 +872,7 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                 finalMessages.push(...systemMessages);
 
                 // Process other messages to ensure alternation
-                let lastRole: 'user' | 'assistant' | null = null;
+                let lastRole = null;
                 for (const msg of otherMessages) {
                     if (msg.role === 'user' || msg.role === 'assistant') {
                         if (lastRole !== msg.role) {

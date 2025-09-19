@@ -2086,12 +2086,12 @@ const Agents = ({ project }: { project: any }) => {
                                 <div className="flex items-center space-x-2">
                                     <Switch
                                         id="deep-search"
-                                        checked={newAgentModelParams.search_mode === 'deep'}
+                                        checked={newAgentModelParams.search_mode === 'academic'}
                                         onCheckedChange={(checked: any) => {
-                                            setNewAgentModelParams((prev: any) => ({ ...prev, search_mode: checked ? 'deep' : undefined }))
+                                            setNewAgentModelParams((prev: any) => ({ ...prev, search_mode: checked ? 'academic' : undefined }))
                                         }}
                                     />
-                                    <Label htmlFor="deep-search">Deep Search</Label>
+                                    <Label htmlFor="deep-search">Academic Search</Label>
                                 </div>
                                 <p className="text-blue-700 dark:text-blue-300">
                                     Deep Search provides more thorough results but may take longer.
@@ -2216,9 +2216,9 @@ const Agents = ({ project }: { project: any }) => {
                                 <div className="flex items-center space-x-2">
                                     <Switch
                                         id="edit-deep-search"
-                                        checked={editAgentModelParams.search_mode === 'deep'}
+                                        checked={editAgentModelParams.search_mode === 'academic'}
                                         onCheckedChange={(checked: any) => {
-                                            setEditAgentModelParams((prev: any) => ({ ...prev, search_mode: checked ? 'deep' : undefined }))
+                                            setEditAgentModelParams((prev: any) => ({ ...prev, search_mode: checked ? 'academic' : undefined }))
                                         }}
                                     />
                                     <Label htmlFor="edit-deep-search">Deep Search</Label>

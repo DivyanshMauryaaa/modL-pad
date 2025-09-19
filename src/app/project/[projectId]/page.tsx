@@ -6,12 +6,12 @@ import { Input } from '@/components/ui/input';
 import supabase from '@/lib/supabase';
 import { useUser } from '@clerk/nextjs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { AlertCircle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronRight, Clock, Copy, Edit3, FileText, Folder, FolderPlus, Home, Loader2, MessageCircle, Move, RefreshCw, Save, SendHorizonal, Sparkles, Trash2, User, ZoomIn } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Bot, CheckCircle2, ChevronDown, ChevronRight, Clock, Copy, Edit3, FileText, Folder, FolderPlus, Home, Loader2, MessageCircle, Move, RefreshCw, Save, SendHorizonal, Settings, Sparkles, Trash2, User, X, ZoomIn } from 'lucide-react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 // Add these imports
 import { Mention, MentionsInput } from 'react-mentions';
 import mentionStyle from '@/styles/mentionStyles';
@@ -22,6 +22,10 @@ import remarkGfm from 'remark-gfm';
 import OpenAI from 'openai';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@radix-ui/react-tabs';
+import Link from 'next/link';
+import { auth } from '@clerk/nextjs/server';
+import checkPro from './checkPremium';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 const api = new OpenAI({
     apiKey: process.env.NEXT_PUBLIC_AIML_API_KEY,
@@ -203,7 +207,7 @@ const MessageBubble = ({
                     ? 'bg-card'
                     : message.isError
                         ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300'
-                        : 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
+                        : ''
                     }`}>
                     <div className="flex items-start justify-between gap-2">
                         <div className="flex-1">
@@ -279,11 +283,40 @@ const OverviewTab = ({ project }: { project: any }) => (
                 <p><strong>Created:</strong> {project.created_at ? new Date(project.created_at).toLocaleDateString() : 'N/A'}</p>
                 <p><strong>Status:</strong> {project.status || 'Active'}</p>
             </div>
-            <div className="p-4 rounded-lg border">
-                <h3 className="text-lg font-semibold mb-2">Quick Stats</h3>
-                <p>Chats: 0</p>
-                <p>Contextual Documents: </p>
-            </div>
+        </div>
+        <div className='flex gap-3'>
+            <Link href={`/project/${project.id}?tab=chat`} className='w-[200px]'>
+                <Card>
+                    <CardHeader>
+                        <MessageCircle />
+                        <CardTitle>Chat</CardTitle>
+                    </CardHeader>
+                </Card>
+            </Link>
+            <Link href={`/project/${project.id}?tab=responseLib`} className='w-[200px]'>
+                <Card>
+                    <CardHeader>
+                        <Folder />
+                        <CardTitle>Response Library</CardTitle>
+                    </CardHeader>
+                </Card>
+            </Link>
+            <Link href={`/project/${project.id}?tab=agents`} className='w-[200px]'>
+                <Card>
+                    <CardHeader>
+                        <Bot />
+                        <CardTitle>Agents</CardTitle>
+                    </CardHeader>
+                </Card>
+            </Link>
+            <Link href={`/project/${project.id}?tab=settings`} className='w-[200px]'>
+                <Card>
+                    <CardHeader>
+                        <Settings />
+                        <CardTitle>Settings</CardTitle>
+                    </CardHeader>
+                </Card>
+            </Link>
         </div>
     </div>
 );
@@ -573,6 +606,19 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
     const [mentionSuggestions, setMentionSuggestions] = useState<any[]>([]);
     const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null);
     const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'error'>('connected');
+    const [isPremium, setIsPremium] = useState<any>(null); //Boolean Value
+    const { user } = useUser();
+    const [loading, setLoading] = useState(true);
+
+
+    useEffect(() => {
+        if (user) {
+            const res = checkPro();
+            setIsPremium(res);
+        }
+    }, [user]);
+
+
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -710,6 +756,38 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
             setSendingMessage(true);
             setConnectionStatus('connecting');
 
+            // Check message limits before proceeding
+            if (!retryLastMessage) {
+                const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+
+                // Get today's message count for the current user
+                const { data: todayMessages, error: countError } = await supabase
+                    .from('chat_messages')
+                    .select('id')
+                    .eq('user_id', user?.id)
+                    .eq('role', 'user')
+                    .gte('created_at', `${today}T00:00:00.000Z`)
+                    .lt('created_at', `${today}T23:59:59.999Z`);
+
+                if (countError) {
+                    console.error('Error checking message count:', countError);
+                    throw new Error('Failed to check message limit');
+                }
+
+                const messageCount = todayMessages?.length || 0;
+
+                // Check limits based on user type
+                if (isPremium) {
+                    if (messageCount >= 1000) {
+                        throw new Error('Daily message limit reached. Pro users can send up to 1000 messages per day.');
+                    }
+                } else {
+                    if (messageCount >= 3) {
+                        throw new Error('Daily message limit reached. Free users can send up to 3 messages per day. Upgrade to Pro for more messages.');
+                    }
+                }
+            }
+
             // Parse mentions
             const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
             const mentions = [];
@@ -734,6 +812,8 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                     role: 'user',
                     created_at: new Date().toISOString(),
                     mentions: mentions.length > 0 ? JSON.stringify(mentions) : null,
+                    user_id: user?.id,
+                    agent_id: null // Fix: Use actual null instead of undefined
                 };
 
                 setMessages(prev => [...prev, userMessage]);
@@ -774,7 +854,7 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
 
                 setLastUsedAgentId(agent.id);
 
-                // Build context based on agent's context_type
+                // Build context messages array
                 let contextMessages = [];
 
                 // Add system message with agent instructions
@@ -784,12 +864,12 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                 });
 
                 // Add context from saved responses if context_folder is specified
-                if (agent.context_folder) {
+                if (agent.context_folder && agent.context_folder !== "") {
                     try {
                         // Fetch saved responses from the specified folder
                         const { data: savedResponses, error: folderError } = await supabase
                             .from('saved_responses')
-                            .select('title, content')
+                            .select('*')
                             .eq('folder_id', agent.context_folder)
                             .eq('project_id', project.id)
                             .order('created_at', { ascending: true });
@@ -798,89 +878,121 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                             console.error('Error fetching saved responses:', folderError);
                         } else if (savedResponses && savedResponses.length > 0) {
                             // Add saved responses as system messages for context
-                            const folderContext = savedResponses.map((response: any) => ({
-                                role: 'system',
-                                content: `[Saved Context: ${response.title}] ${response.content}`
-                            }));
-
-                            contextMessages.push(...folderContext);
+                            savedResponses.forEach((response: any) => {
+                                contextMessages.push({
+                                    role: 'system',
+                                    content: `[Saved Context: ${response.title}] ${response.content}`
+                                });
+                            });
                         }
                     } catch (error) {
                         console.error('Error loading context folder:', error);
                     }
                 }
 
-                // Handle different context types
-                if (agent.context_type === 'fresh') {
-                    // No chat messages in context - only system messages and current prompt
-                    contextMessages.push({
-                        role: 'user',
-                        content: currentPrompt
-                    });
+                // Get relevant chat messages based on context type
+                let chatMessages = [];
 
-                } else if (agent.context_type === 'all') {
+                if (agent.context_type === 'all') {
                     // Include all messages from the current chat
-                    const allChatMessages = messages
-                        .filter(msg => msg.chat_id === selectedChatId)
-                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-                        .map(msg => ({
-                            role: msg.role,
-                            content: msg.content
-                        }));
-
-                    contextMessages.push(...allChatMessages);
-
-                    // Add current prompt if not retrying (since it won't be in messages yet)
-                    if (!retryLastMessage) {
-                        contextMessages.push({
-                            role: 'user',
-                            content: currentPrompt
-                        });
-                    }
+                    chatMessages = messages
+                        .filter(msg => msg.chat_id === selectedChatId && !msg.isError)
+                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
                 } else if (agent.context_type === 'agent') {
                     // Include only messages from/to this specific agent
-                    const agentMessages = messages
+                    chatMessages = messages
                         .filter(msg =>
                             msg.chat_id === selectedChatId &&
+                            !msg.isError &&
                             (msg.agent_id === agent.id || msg.role === 'user')
                         )
-                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-                        .map(msg => ({
-                            role: msg.role,
-                            content: msg.content
-                        }));
+                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                }
+                // For 'fresh' context_type, chatMessages remains empty
 
-                    contextMessages.push(...agentMessages);
+                // Add current prompt if not retrying and not fresh context
+                if (!retryLastMessage && agent.context_type !== 'fresh') {
+                    chatMessages.push({
+                        role: 'user',
+                        content: currentPrompt,
+                        chat_id: selectedChatId,
+                        created_at: new Date().toISOString()
+                    });
+                } else if (agent.context_type === 'fresh') {
+                    // For fresh context, only add the current prompt
+                    chatMessages = [{
+                        role: 'user',
+                        content: currentPrompt,
+                        chat_id: selectedChatId,
+                        created_at: new Date().toISOString()
+                    }];
+                }
 
-                    // Add current prompt if not retrying
-                    if (!retryLastMessage) {
-                        contextMessages.push({
-                            role: 'user',
-                            content: currentPrompt
-                        });
+                // Ensure proper message alternation for API
+                const conversationMessages = [];
+                let lastRole = null;
+
+                for (const msg of chatMessages) {
+                    if (msg.role === 'user' || msg.role === 'assistant') {
+                        if (lastRole === null || lastRole !== msg.role) {
+                            // Different role from last message or first message
+                            conversationMessages.push({
+                                role: msg.role,
+                                content: msg.content
+                            });
+                            lastRole = msg.role;
+                        } else {
+                            // Same role as last message, replace the last one
+                            conversationMessages[conversationMessages.length - 1] = {
+                                role: msg.role,
+                                content: msg.content
+                            };
+                        }
                     }
                 }
 
-                // Ensure strict alternation and proper ordering
-                const finalMessages = [];
+                // Ensure the conversation starts with a user message (after system messages)
+                if (conversationMessages.length > 0 && conversationMessages[0].role !== 'user') {
+                    // Remove any assistant messages at the beginning
+                    while (conversationMessages.length > 0 && conversationMessages[0].role === 'assistant') {
+                        conversationMessages.shift();
+                    }
+                }
 
-                // Keep system messages at the beginning
-                const systemMessages = contextMessages.filter(msg => msg.role === 'system');
-                const otherMessages = contextMessages.filter(msg => msg.role !== 'system');
+                // Ensure the conversation ends with a user message
+                if (conversationMessages.length > 0 && conversationMessages[conversationMessages.length - 1].role !== 'user') {
+                    conversationMessages.push({
+                        role: 'user',
+                        content: currentPrompt
+                    });
+                }
 
-                finalMessages.push(...systemMessages);
+                // Build final messages array
+                const finalMessages = [
+                    ...contextMessages, // System messages first
+                    ...conversationMessages // Then alternating user/assistant messages
+                ];
 
-                // Process other messages to ensure alternation
-                let lastRole = null;
-                for (const msg of otherMessages) {
-                    if (msg.role === 'user' || msg.role === 'assistant') {
-                        if (lastRole !== msg.role) {
-                            finalMessages.push(msg);
-                            lastRole = msg.role;
-                        } else {
-                            // Replace consecutive same-role messages with the latest
-                            finalMessages[finalMessages.length - 1] = msg;
+                // Validate message structure
+                let systemMessagesEnded = false;
+                let lastConversationRole = null;
+
+                for (let i = 0; i < finalMessages.length; i++) {
+                    const msg = finalMessages[i];
+
+                    if (msg.role === 'system') {
+                        if (systemMessagesEnded) {
+                            throw new Error('System messages must come before conversation messages');
+                        }
+                    } else {
+                        systemMessagesEnded = true;
+
+                        if (msg.role === 'user' || msg.role === 'assistant') {
+                            if (lastConversationRole === msg.role) {
+                                console.warn(`Consecutive ${msg.role} messages detected at index ${i}`);
+                            }
+                            lastConversationRole = msg.role;
                         }
                     }
                 }
@@ -890,26 +1002,25 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                     model: agent.model,
                     messages: finalMessages,
                     stream: false,
+                    max_tokens: 16384
                 });
 
-                if (!response.choices[0].message.content) {
+                if (!response.choices[0]?.message?.content) {
                     throw new Error('API call failed: No content in response');
                 }
 
-                const data = response.choices[0].message.content;
-
-                if (!data) {
-                    throw new Error(data || 'No response from agent');
-                }
+                const aiResponseContent = response.choices[0].message.content;
 
                 // Create AI message
                 const aiMessage = {
                     chat_id: selectedChatId,
                     project_id: project.id,
-                    content: data,
+                    content: aiResponseContent,
                     role: 'assistant',
                     agent_id: agent.id,
                     created_at: new Date().toISOString(),
+                    mentions: null, // Fix: Use actual null
+                    user_id: user?.id
                 };
 
                 // Save to database
@@ -936,12 +1047,15 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                 role: 'assistant',
                 created_at: new Date().toISOString(),
                 isError: true,
+                agent_id: null, // Fix: Use actual null
+                mentions: null, // Fix: Use actual null
+                user_id: user?.id
             };
 
             setMessages(prev => [...prev, errorMessage]);
         } finally {
             setSendingMessage(false);
-            setRetryingMessageId(null);
+            setRetryingMessageId?.(null);
         }
     };
 
@@ -1381,8 +1495,9 @@ const Agents = ({ project }: { project: any }) => {
 
     const [newAgentName, setNewAgentName] = useState('');
     const [newAgentDescription, setNewAgentDescription] = useState('');
-    const [newAgentModel, setNewAgentModel] = useState('gemini-2.0-flash');
+    const [newAgentModel, setNewAgentModel] = useState('google/gemini-2.0-flash');
     const [newAgentInstructions, setNewAgentInstructions] = useState('');
+    const [newAgentContextFolder, setNewAgentContextFolder] = useState<any>(null);
     const [addDialogOpen, setAddDialogOpen] = useState(false);
     const [contextType, setContextType] = useState('all');
 
@@ -1393,14 +1508,66 @@ const Agents = ({ project }: { project: any }) => {
     const [editingAgent, setEditingAgent] = useState<any>(null);
     const [editAgentName, setEditAgentName] = useState('');
     const [editAgentDescription, setEditAgentDescription] = useState('');
-    const [editAgentModel, setEditAgentModel] = useState('gemini-2.0-flash');
+    const [editAgentModel, setEditAgentModel] = useState('google/gemini-2.0-flash');
     const [editAgentInstructions, setEditAgentInstructions] = useState('');
     const [editContextType, setEditContextType] = useState('');
+    const [editAgentContextFolder, setEditAgentContextFolder] = useState<any>(null);
 
+    // Folder selection dialog state
+    const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+    const [editFolderDialogOpen, setEditFolderDialogOpen] = useState(false);
+    const [folders, setFolders] = useState<any[]>([]);
+    const [currentFolderView, setCurrentFolderView] = useState<any>(null);
+    const [folderBreadcrumb, setFolderBreadcrumb] = useState<any[]>([]);
+    const [folderLoading, setFolderLoading] = useState(false);
+
+    const fetchAllFolders = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('response_folders')
+                .select('*')
+                .eq('project_id', project.id)
+                .order('name');
+
+            if (error) throw error;
+            return data || [];
+        } catch (error) {
+            console.error('Error fetching all folders:', error);
+            return [];
+        }
+    };
+
+    const fetchFoldersForDialog = async (parentFolderId: string | null = null) => {
+        try {
+            setFolderLoading(true);
+            let query = supabase.from('response_folders')
+                .select('*')
+                .eq('project_id', project.id)
+                .order('name');
+
+            if (parentFolderId === null) {
+                query = query.is('parent_folder', null);
+            } else {
+                query = query.eq('parent_folder', parentFolderId);
+            }
+
+            const { data, error } = await query;
+            if (error) throw error;
+            setFolders(data || []);
+        } catch (error) {
+            console.error('Error fetching folders:', error);
+            setFolders([]);
+        } finally {
+            setFolderLoading(false);
+        }
+    };
 
     const fetchAgents = async () => {
         const { data, error } = await supabase.from('agents')
-            .select('*')
+            .select(`
+                *,
+                context_folder:response_folders(id, name)
+            `)
             .eq('project_id', project.id);
 
         if (error) setError(error.message);
@@ -1417,8 +1584,19 @@ const Agents = ({ project }: { project: any }) => {
                 description: newAgentDescription,
                 model: newAgentModel,
                 instructions: newAgentInstructions,
+                context_type: contextType,
+                context_folder: newAgentContextFolder?.id || null
             });
         if (error) setError(error.message);
+
+        // Reset form
+        setNewAgentName('');
+        setNewAgentDescription('');
+        setNewAgentModel('google/gemini-2.0-flash');
+        setNewAgentInstructions('');
+        setNewAgentContextFolder(null);
+        setContextType('all');
+
         fetchAgents();
     }
 
@@ -1428,8 +1606,9 @@ const Agents = ({ project }: { project: any }) => {
         setEditAgentDescription(agent.description);
         setEditAgentModel(agent.model);
         setEditAgentInstructions(agent.instructions || '');
+        setEditContextType(agent.context_type);
+        setEditAgentContextFolder(agent.context_folder || null);
         setEditDialogOpen(true);
-        setContextType(agent.context_type)
     }
 
     const updateAgent = async () => {
@@ -1442,6 +1621,8 @@ const Agents = ({ project }: { project: any }) => {
                 description: editAgentDescription,
                 model: editAgentModel,
                 instructions: editAgentInstructions,
+                context_type: editContextType,
+                context_folder: editAgentContextFolder?.id || null
             })
             .eq('id', editingAgent.id);
 
@@ -1465,8 +1646,97 @@ const Agents = ({ project }: { project: any }) => {
         fetchAgents();
     }
 
+    const buildFolderPath = async (folderId: string): Promise<string> => {
+        const allFolders = await fetchAllFolders();
+        const buildPath = (id: string, foldersList: any[]): string => {
+            const folder = foldersList.find(f => f.id === id);
+            if (!folder) return '';
+
+            if (folder.parent_folder) {
+                const parentPath = buildPath(folder.parent_folder, foldersList);
+                return parentPath ? `${parentPath} / ${folder.name}` : folder.name;
+            }
+
+            return folder.name;
+        };
+
+        return buildPath(folderId, allFolders);
+    };
+
+    // Folder dialog navigation functions
+    const navigateToFolderInDialog = async (folder: any) => {
+        setCurrentFolderView(folder);
+        setFolderBreadcrumb(prev => [...prev, folder]);
+        await fetchFoldersForDialog(folder.id);
+    };
+
+    const navigateToRootInDialog = async () => {
+        setCurrentFolderView(null);
+        setFolderBreadcrumb([]);
+        await fetchFoldersForDialog(null);
+    };
+
+    const navigateToBreadcrumbInDialog = async (index: number) => {
+        const targetFolder = folderBreadcrumb[index];
+        const newBreadcrumb = folderBreadcrumb.slice(0, index + 1);
+
+        setCurrentFolderView(targetFolder);
+        setFolderBreadcrumb(newBreadcrumb);
+        await fetchFoldersForDialog(targetFolder.id);
+    };
+
+    const goBackInDialog = async () => {
+        if (folderBreadcrumb.length === 0) return;
+
+        if (folderBreadcrumb.length === 1) {
+            await navigateToRootInDialog();
+        } else {
+            const newBreadcrumb = folderBreadcrumb.slice(0, -1);
+            const parentFolder = newBreadcrumb[newBreadcrumb.length - 1];
+
+            setCurrentFolderView(parentFolder);
+            setFolderBreadcrumb(newBreadcrumb);
+            await fetchFoldersForDialog(parentFolder.id);
+        }
+    };
+
+    const openFolderDialog = async (isEdit: boolean = false) => {
+        // Reset dialog state
+        setCurrentFolderView(null);
+        setFolderBreadcrumb([]);
+        await fetchFoldersForDialog(null);
+
+        if (isEdit) {
+            setEditFolderDialogOpen(true);
+        } else {
+            setFolderDialogOpen(true);
+        }
+    };
+
+    const selectFolder = (folder: any, isEdit: boolean = false) => {
+        if (isEdit) {
+            setEditAgentContextFolder(folder);
+            setEditFolderDialogOpen(false);
+        } else {
+            setNewAgentContextFolder(folder);
+            setFolderDialogOpen(false);
+        }
+    };
+
+    const clearFolderSelection = (isEdit: boolean = false) => {
+        if (isEdit) {
+            setEditAgentContextFolder(null);
+            setEditFolderDialogOpen(false);
+        } else {
+            setNewAgentContextFolder(null);
+            setFolderDialogOpen(false);
+        }
+    };
+
     useEffect(() => {
-        if (project.id) fetchAgents();
+        if (project.id) {
+            fetchAgents();
+        }
     }, [project.id]);
 
     return (
@@ -1476,7 +1746,7 @@ const Agents = ({ project }: { project: any }) => {
                 <DialogTrigger asChild>
                     <Button className="cursor-pointer">Add Agent</Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle>
                             <Bot className="w-10 h-10 mb-2" />
@@ -1535,6 +1805,43 @@ const Agents = ({ project }: { project: any }) => {
                             </SelectContent>
                         </Select>
 
+                        {/* Context Folder Selection */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Context Folder (Optional)</label>
+                            <div className="flex gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="flex-1 justify-between"
+                                    onClick={() => openFolderDialog(false)}
+                                >
+                                    {newAgentContextFolder ? (
+                                        <div className="flex items-center gap-2">
+                                            <Folder className="h-4 w-4" />
+                                            <span className="truncate">{newAgentContextFolder.name}</span>
+                                        </div>
+                                    ) : (
+                                        "Select folder..."
+                                    )}
+                                    <ChevronRight className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                                {newAgentContextFolder && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        onClick={() => setNewAgentContextFolder(null)}
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                )}
+                            </div>
+                            {newAgentContextFolder && (
+                                <p className="text-xs text-gray-500">
+                                    Agent will use responses from "{newAgentContextFolder.name}" folder for context
+                                </p>
+                            )}
+                        </div>
 
                         <Button onClick={addAgent} className="w-full cursor-pointer">Add Agent</Button>
                     </div>
@@ -1543,7 +1850,7 @@ const Agents = ({ project }: { project: any }) => {
 
             {/* Edit Agent Dialog */}
             <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-                <DialogContent>
+                <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle>
                             <Bot className="w-10 h-10 mb-2" />
@@ -1587,7 +1894,6 @@ const Agents = ({ project }: { project: any }) => {
                             </SelectContent>
                         </Select>
                         <Select
-                            defaultValue={editContextType}
                             value={editContextType}
                             onValueChange={(value) => setEditContextType(value)}
                         >
@@ -1600,6 +1906,44 @@ const Agents = ({ project }: { project: any }) => {
                                 <SelectItem value="fresh">Fresh - won't include any context</SelectItem>
                             </SelectContent>
                         </Select>
+
+                        {/* Context Folder Selection for Edit */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Context Folder (Optional)</label>
+                            <div className="flex gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="flex-1 justify-between"
+                                    onClick={() => openFolderDialog(true)}
+                                >
+                                    {editAgentContextFolder ? (
+                                        <div className="flex items-center gap-2">
+                                            <Folder className="h-4 w-4" />
+                                            <span className="truncate">{editAgentContextFolder.name}</span>
+                                        </div>
+                                    ) : (
+                                        "Select folder..."
+                                    )}
+                                    <ChevronRight className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                                {editAgentContextFolder && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        onClick={() => setEditAgentContextFolder(null)}
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                )}
+                            </div>
+                            {editAgentContextFolder && (
+                                <p className="text-xs text-gray-500">
+                                    Agent will use responses from "{editAgentContextFolder.name}" folder for context
+                                </p>
+                            )}
+                        </div>
 
                         <div className="flex space-x-2">
                             <Button onClick={updateAgent} className="flex-1 cursor-pointer">
@@ -1617,6 +1961,209 @@ const Agents = ({ project }: { project: any }) => {
                 </DialogContent>
             </Dialog>
 
+            {/* Folder Selection Dialog (For Add Agent) */}
+            <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Select Context Folder</DialogTitle>
+                        <DialogDescription>
+                            Choose a folder for the agent to use responses from as context.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {/* Breadcrumb Navigation */}
+                    <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-gray-50 text-sm">
+                        <button
+                            onClick={navigateToRootInDialog}
+                            className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+                        >
+                            <Home size={14} />
+                            Root
+                        </button>
+
+                        {folderBreadcrumb.map((folder, index) => (
+                            <div key={folder.id} className="flex items-center gap-1">
+                                <ChevronRight size={14} className="text-gray-400" />
+                                <button
+                                    onClick={() => navigateToBreadcrumbInDialog(index)}
+                                    className="text-blue-600 hover:text-blue-800 transition-colors"
+                                >
+                                    {folder.name}
+                                </button>
+                            </div>
+                        ))}
+
+                        {folderBreadcrumb.length > 0 && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={goBackInDialog}
+                                className="ml-auto h-6 px-2"
+                            >
+                                <ArrowLeft size={14} />
+                            </Button>
+                        )}
+                    </div>
+
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                        {/* Option to select current folder */}
+                        <div
+                            className="flex items-center gap-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer"
+                            onClick={() => clearFolderSelection(false)}
+                        >
+                            <Home className="h-5 w-5 text-gray-500" />
+                            <div>
+                                <p className="font-medium">No context folder</p>
+                            </div>
+                        </div>
+
+                        {currentFolderView && (
+                            <div
+                                className="flex items-center gap-3 p-3 rounded-lg border hover:bg-blue-50 cursor-pointer border-blue-200"
+                                onClick={() => selectFolder(currentFolderView, false)}
+                            >
+                                <Folder className="h-5 w-5 text-blue-500" />
+                                <div>
+                                    <p className="font-medium">Select "{currentFolderView.name}"</p>
+                                    <p className="text-xs text-gray-500">Use responses from this folder</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {folderLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                            </div>
+                        ) : (
+                            folders.map((folder) => (
+                                <div
+                                    key={folder.id}
+                                    className="flex items-center gap-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer"
+                                    onClick={() => navigateToFolderInDialog(folder)}
+                                >
+                                    <Folder className="h-5 w-5 text-gray-500" />
+                                    <div className="flex-1">
+                                        <p className="font-medium">{folder.name}</p>
+                                        <p className="text-xs text-gray-500">
+                                            {new Date(folder.created_at).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                                </div>
+                            ))
+                        )}
+                    </div>
+
+                    <div className="flex justify-end pt-4">
+                        <Button variant="outline" onClick={() => setFolderDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Folder Selection Dialog (For Edit Agent) */}
+            <Dialog open={editFolderDialogOpen} onOpenChange={setEditFolderDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Select Context Folder</DialogTitle>
+                        <DialogDescription>
+                            Choose a folder for the agent to use responses from as context.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {/* Breadcrumb Navigation */}
+                    <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-gray-50 text-sm">
+                        <button
+                            onClick={navigateToRootInDialog}
+                            className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+                        >
+                            <Home size={14} />
+                            Root
+                        </button>
+
+                        {folderBreadcrumb.map((folder, index) => (
+                            <div key={folder.id} className="flex items-center gap-1">
+                                <ChevronRight size={14} className="text-gray-400" />
+                                <button
+                                    onClick={() => navigateToBreadcrumbInDialog(index)}
+                                    className="text-blue-600 hover:text-blue-800 transition-colors"
+                                >
+                                    {folder.name}
+                                </button>
+                            </div>
+                        ))}
+
+                        {folderBreadcrumb.length > 0 && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={goBackInDialog}
+                                className="ml-auto h-6 px-2"
+                            >
+                                <ArrowLeft size={14} />
+                            </Button>
+                        )}
+                    </div>
+
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                        {/* Option to select no folder */}
+                        <div
+                            className="flex items-center gap-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer"
+                            onClick={() => clearFolderSelection(true)}
+                        >
+                            <Home className="h-5 w-5 text-gray-500" />
+                            <div>
+                                <p className="font-medium">No specific folder</p>
+                                <p className="text-xs text-gray-500">Use all responses</p>
+                            </div>
+                        </div>
+
+                        {currentFolderView && (
+                            <div
+                                className="flex items-center gap-3 p-3 rounded-lg border hover:bg-blue-50 cursor-pointer border-blue-200"
+                                onClick={() => selectFolder(currentFolderView, true)}
+                            >
+                                <Folder className="h-5 w-5 text-blue-500" />
+                                <div>
+                                    <p className="font-medium">Select "{currentFolderView.name}"</p>
+                                    <p className="text-xs text-gray-500">Use responses from this folder</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {folderLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                            </div>
+                        ) : (
+                            folders.map((folder) => (
+                                <div
+                                    key={folder.id}
+                                    className="flex items-center gap-3 p-3 rounded-lg border hover:bg-gray-50 cursor-pointer"
+                                    onClick={() => navigateToFolderInDialog(folder)}
+                                >
+                                    <Folder className="h-5 w-5 text-gray-500" />
+                                    <div className="flex-1">
+                                        <p className="font-medium">{folder.name}</p>
+                                        <p className="text-xs text-gray-500">
+                                            {new Date(folder.created_at).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                                </div>
+                            ))
+                        )}
+                    </div>
+
+                    <div className="flex justify-end pt-4">
+                        <Button variant="outline" onClick={() => setEditFolderDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             {loading && <div className="text-center">Loading...</div>}
             {error && <div className="text-red-500">{error}</div>}
             {agents.length > 0 && (
@@ -1626,7 +2173,13 @@ const Agents = ({ project }: { project: any }) => {
                             <div className="p-4">
                                 <Bot className="w-10 h-10 mb-2" />
                                 <h3 className="text-lg font-semibold mb-2">{agent.name}</h3>
-                                <p className="text-gray-600 mb-4">{agent.description}</p>
+                                <p className="text-gray-600 mb-2">{agent.description}</p>
+                                {agent.context_folder && (
+                                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+                                        <Folder className="h-4 w-4" />
+                                        <span>Context: {agent.context_folder.name}</span>
+                                    </div>
+                                )}
                                 <Button
                                     className="cursor-pointer"
                                     variant={'secondary'}
@@ -1676,39 +2229,77 @@ const Context = ({ project }: { project: any }) => (
 );
 
 
-const SettingsTab = ({ project }: { project: any }) => (
-    <div className="space-y-6">
-        <h2 className="text-3xl font-bold">Project Settings</h2>
-        <div className="space-y-4">
-            <div className="border rounded-lg p-4">
-                <h3 className="text-lg font-semibold mb-4">General Settings</h3>
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Project Name</label>
-                        <input
-                            type="text"
-                            defaultValue={project.title}
-                            className="w-full p-2 border rounded-md"
-                        />
+const SettingsTab = ({ project }: { project: any }) => {
+    const [name, setNewName] = useState(project.title);
+    const [confirmationName, setConfirmation] = useState('');
+    const router = useRouter();
+
+    const deleteProj = async () => {
+        if (confirmationName === project.title) {
+            const { error } = await supabase.from('projects')
+                .delete()
+                .eq('id', project.id)
+
+            if (error) toast.error(error.message); return;
+            router.push('/')
+        } else if (confirmationName != project.title) {
+            toast.error("Confirmation name isn't matching the Project name")
+        } else {
+            return;
+        }
+    }
+
+    const updateProj = async () => {
+        const { error } = await supabase.from('projects')
+            .update({
+                title: name
+            })
+            .eq('id', project.id)
+
+        if (error) toast.error('Error renaming project ' + error.message);
+        else if (!error) toast.success('Changed name successfuly!');
+    }
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-3xl font-bold">Project Settings</h2>
+            <div className="space-y-4">
+                <div className="border rounded-lg p-4">
+                    <h3 className="text-lg font-semibold mb-4">General Settings</h3>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Project Name</label>
+                            <Input
+                                type="text"
+                                defaultValue={name}
+                                onChange={(e) => { setNewName(e.target.value) }}
+                                className="w-full p-2 border rounded-md"
+                            />
+                        </div>
+                        {name != project.title && (
+                            <Button onClick={updateProj}>Save Changes</Button>
+                        )}
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1">Description</label>
-                        <textarea
-                            defaultValue={project.description || ''}
-                            className="w-full p-2 border rounded-md h-24"
-                        />
-                    </div>
-                    <Button>Save Changes</Button>
+                </div>
+                <div className="border border-red-200 rounded-lg p-4">
+                    <h3 className="text-lg font-semibold text-red-800 mb-2">Danger Zone</h3>
+                    <p className="text-red-600 mb-4">Permanently delete this project and all its data.</p>
+
+                    <Dialog>
+                        <DialogTrigger asChild>
+                            <Button variant="destructive">Delete Project</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogTitle>Delete Project Confirmation</DialogTitle>
+                            <Input placeholder='Enter the name of the project' value={confirmationName} onChange={(e) => { setConfirmation(e.target.value) }} />
+                            <Button onClick={deleteProj}>Yes, Delete</Button>
+                        </DialogContent>
+                    </Dialog>
                 </div>
             </div>
-            <div className="border border-red-200 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-red-800 mb-2">Danger Zone</h3>
-                <p className="text-red-600 mb-4">Permanently delete this project and all its data.</p>
-                <Button variant="destructive">Delete Project</Button>
-            </div>
         </div>
-    </div>
-);
+    )
+}
 
 const ResponseLibrary = ({ project }: { project: any }) => {
     const [folderTitle, setNewFolderTitle] = useState('');
@@ -2694,13 +3285,13 @@ const ProjectPage = () => {
                                 >
                                     Response Library
                                 </Button>
-                                <Button
+                                {/* <Button
                                     variant={activeTab === 'context' ? 'default' : 'ghost'}
                                     className="justify-start"
                                     onClick={() => handleTabSwitch('context')}
                                 >
                                     Context
-                                </Button>
+                                </Button> */}
                                 <Button
                                     variant={activeTab === 'agents' ? 'default' : 'ghost'}
                                     className="justify-start"

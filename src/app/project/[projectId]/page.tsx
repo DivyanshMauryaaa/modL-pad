@@ -20,12 +20,15 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkGfm from 'remark-gfm';
 import OpenAI from 'openai';
+import { ChatCompletionChunk } from 'openai/resources/index.mjs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@radix-ui/react-tabs';
 import Link from 'next/link';
 import { auth } from '@clerk/nextjs/server';
 import checkPro from './checkPremium';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 const api = new OpenAI({
     apiKey: process.env.NEXT_PUBLIC_AIML_API_KEY,
@@ -184,6 +187,33 @@ const TypingAnimation = ({ agentName }: { agentName?: string }) => {
     );
 };
 
+const WebSearchResults = ({ sources }: { sources: any[] }) => {
+    if (!sources || sources.length === 0) return null;
+
+    return (
+        <div className="mt-4 p-4 border-t border-gray-200 dark:border-gray-700">
+            <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-blue-500" />
+                Web Search Results
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {sources.map((source, index) => (
+                    <a
+                        key={index}
+                        href={source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    >
+                        <p className="font-medium text-blue-600 dark:text-blue-400 truncate">{source.title}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{source.snippet}</p>
+                    </a>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 // Message Component
 const MessageBubble = ({
     message,
@@ -229,6 +259,7 @@ const MessageBubble = ({
                             )}
                         </div>
                     </div>
+                    {message.sources && <WebSearchResults sources={message.sources} />}
                     <div className='flex gap-2'>
                         {message.role === 'assistant' && onRetry && (
                             <div className="mt-2">
@@ -806,6 +837,7 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
             // Add user message if not retrying
             if (!retryLastMessage) {
                 const userMessage = {
+                    id: crypto.randomUUID(),
                     chat_id: selectedChatId,
                     project_id: project.id,
                     content: plainTextContent,
@@ -813,7 +845,7 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                     created_at: new Date().toISOString(),
                     mentions: mentions.length > 0 ? JSON.stringify(mentions) : null,
                     user_id: user?.id,
-                    agent_id: null // Fix: Use actual null instead of undefined
+                    agent_id: null
                 };
 
                 setMessages(prev => [...prev, userMessage]);
@@ -997,40 +1029,84 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                     }
                 }
 
+                const aiMessage = {
+                    id: crypto.randomUUID(),
+                    chat_id: selectedChatId,
+                    project_id: project.id,
+                    content: '',
+                    role: 'assistant',
+                    agent_id: agent.id,
+                    created_at: new Date().toISOString(),
+                    mentions: null,
+                    user_id: user?.id,
+                    sources: []
+                };
+
+                setMessages(prev => [...prev, aiMessage]);
+
                 // Call API
                 const response = await api.chat.completions.create({
                     model: agent.model,
                     messages: finalMessages,
-                    stream: false,
-                    max_tokens: 16384
+                    stream: true,
+                    max_tokens: 16384,
+                    ...agent.model_params
                 });
 
-                if (!response.choices[0]?.message?.content) {
-                    throw new Error('API call failed: No content in response');
+                let accumulatedContent = '';
+                let accumulatedSources: any[] = [];
+
+                const iterableResponse = response as unknown as AsyncIterable<ChatCompletionChunk>;
+
+                for await (const chunk of iterableResponse) {
+                    const content = chunk.choices[0]?.delta?.content || '';
+
+                    if (content) {
+                        accumulatedContent += content;
+                        setMessages(prev =>
+                            prev.map(msg =>
+                                msg.id === aiMessage.id
+                                    ? { ...msg, content: accumulatedContent }
+                                    : msg
+                            )
+                        );
+                    }
+
+                    if (chunk.choices[0]?.delta?.tool_calls) {
+                        // This part is specific to how AIML API returns sources.
+                        // You might need to adjust based on the actual stream format.
+                        try {
+                            const toolCalls = chunk.choices[0].delta.tool_calls;
+                            toolCalls.forEach((toolCall: any) => {
+                                if (toolCall.function?.name === 'search_results') {
+                                    const args = JSON.parse(toolCall.function.arguments);
+                                    accumulatedSources.push(...args.results);
+                                    setMessages(prev =>
+                                        prev.map(msg =>
+                                            msg.id === aiMessage.id
+                                                ? { ...msg, sources: [...accumulatedSources] }
+                                                : msg
+                                        )
+                                    );
+                                }
+                            });
+                        } catch (e) {
+                            console.error("Error parsing tool calls", e);
+                        }
+                    }
                 }
 
-                const aiResponseContent = response.choices[0].message.content;
-
-                // Create AI message
-                const aiMessage = {
-                    chat_id: selectedChatId,
-                    project_id: project.id,
-                    content: aiResponseContent,
-                    role: 'assistant',
-                    agent_id: agent.id,
-                    created_at: new Date().toISOString(),
-                    mentions: null, // Fix: Use actual null
-                    user_id: user?.id
-                };
 
                 // Save to database
-                const { error: aiError } = await supabase.from('chat_messages').insert(aiMessage);
+                const { error: aiError } = await supabase.from('chat_messages').insert({
+                    ...aiMessage,
+                    content: accumulatedContent,
+                    sources: accumulatedSources.length > 0 ? JSON.stringify(accumulatedSources) : null,
+                });
                 if (aiError) {
                     console.error('Error saving AI message:', aiError);
                     // Still add to UI even if DB save fails
                 }
-
-                setMessages(prev => [...prev, aiMessage]);
             }
 
         } catch (error) {
@@ -1193,7 +1269,7 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                                             size="sm"
                                             className={`opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0 ${selectedChatId === chat.id
                                                 ? 'hover:bg-white/20 text-white dark:text-black'
-                                                : 'hover:bg-red-100 text-red-600'
+                                                : 'hover:bg-red-100 text-red-600'}
                                                 }`}
                                             onClick={(e) => {
                                                 e.stopPropagation();
@@ -1314,7 +1390,7 @@ const Chat = ({ project, supabase }: { project: any; supabase: any }) => {
                                     <>
                                         {messages.map((message: any, index: number) => (
                                             <MessageBubble
-                                                key={index}
+                                                key={message.id || index}
                                                 message={message}
                                                 agents={agents}
                                                 onRetry={message.role === 'assistant' && index === messages.length - 1 ? retryMessage : undefined}
@@ -1498,6 +1574,7 @@ const Agents = ({ project }: { project: any }) => {
     const [newAgentModel, setNewAgentModel] = useState('google/gemini-2.0-flash');
     const [newAgentInstructions, setNewAgentInstructions] = useState('');
     const [newAgentContextFolder, setNewAgentContextFolder] = useState<any>(null);
+    const [newAgentModelParams, setNewAgentModelParams] = useState<any>({});
     const [addDialogOpen, setAddDialogOpen] = useState(false);
     const [contextType, setContextType] = useState('all');
 
@@ -1512,6 +1589,7 @@ const Agents = ({ project }: { project: any }) => {
     const [editAgentInstructions, setEditAgentInstructions] = useState('');
     const [editContextType, setEditContextType] = useState('');
     const [editAgentContextFolder, setEditAgentContextFolder] = useState<any>(null);
+    const [editAgentModelParams, setEditAgentModelParams] = useState<any>({});
 
     // Folder selection dialog state
     const [folderDialogOpen, setFolderDialogOpen] = useState(false);
@@ -1520,6 +1598,207 @@ const Agents = ({ project }: { project: any }) => {
     const [currentFolderView, setCurrentFolderView] = useState<any>(null);
     const [folderBreadcrumb, setFolderBreadcrumb] = useState<any[]>([]);
     const [folderLoading, setFolderLoading] = useState(false);
+
+    const modelOptions = [
+        // OpenAI GPT-4o and variants
+        { value: 'openai/gpt-4o', label: 'GPT-4o' },
+        { value: 'gpt-4o', label: 'GPT-4o' },
+        { value: 'gpt-4o-2024-08-06', label: 'GPT-4o 2024-08-06' },
+        { value: 'gpt-4o-2024-05-13', label: 'GPT-4o 2024-05-13' },
+        { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+        { value: 'gpt-4o-mini-2024-07-18', label: 'GPT-4o Mini 2024-07-18' },
+        { value: 'chatgpt-4o-latest', label: 'ChatGPT-4o Latest' },
+        { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+        { value: 'gpt-4-turbo-2024-04-09', label: 'GPT-4 Turbo 2024-04-09' },
+        { value: 'gpt-4', label: 'GPT-4' },
+        { value: 'gpt-4-0125-preview', label: 'GPT-4 0125 Preview' },
+        { value: 'gpt-4-1106-preview', label: 'GPT-4 1106 Preview' },
+        { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+        { value: 'gpt-3.5-turbo-0125', label: 'GPT-3.5 Turbo 0125' },
+        { value: 'gpt-3.5-turbo-1106', label: 'GPT-3.5 Turbo 1106' },
+        { value: 'o1-mini', label: 'O1 Mini' },
+        { value: 'o1-mini-2024-09-12', label: 'O1 Mini 2024-09-12' },
+        { value: 'o3-mini', label: 'O3 Mini' },
+        { value: 'gpt-4o-audio-preview', label: 'GPT-4o Audio Preview' },
+        { value: 'gpt-4o-mini-audio-preview', label: 'GPT-4o Mini Audio Preview' },
+        { value: 'gpt-4o-search-preview', label: 'GPT-4o Search Preview', supportsWebSearch: true, category: 'Web Search' },
+        { value: 'gpt-4o-mini-search-preview', label: 'GPT-4o Mini Search Preview', supportsWebSearch: true, category: 'Web Search' },
+        { value: 'openai/gpt-4.1-2025-04-14', label: 'GPT-4.1 2025-04-14' },
+        { value: 'gpt-4.1-2025-04-14', label: 'GPT-4.1 2025-04-14' },
+        { value: 'openai/gpt-4.1-mini-2025-04-14', label: 'GPT-4.1 Mini 2025-04-14' },
+        { value: 'gpt-4.1-mini-2025-04-14', label: 'GPT-4.1 Mini 2025-04-14' },
+        { value: 'openai/gpt-4.1-nano-2025-04-14', label: 'GPT-4.1 Nano 2025-04-14' },
+        { value: 'gpt-4.1-nano-2025-04-14', label: 'GPT-4.1 Nano 2025-04-14' },
+        { value: 'openai/o4-mini-2025-04-16', label: 'O4 Mini 2025-04-16' },
+        { value: 'o4-mini-2025-04-16', label: 'O4 Mini 2025-04-16' },
+        { value: 'openai/o3-2025-04-16', label: 'O3 2025-04-16' },
+        { value: 'o3-2025-04-16', label: 'O3 2025-04-16' },
+        { value: 'o1', label: 'O1' },
+        { value: 'openai/gpt-5-2025-08-07', label: 'GPT-5 2025-08-07' },
+        { value: 'gpt-5-2025-08-07', label: 'GPT-5 2025-08-07' },
+        { value: 'openai/gpt-5-mini-2025-08-07', label: 'GPT-5 Mini 2025-08-07' },
+        { value: 'gpt-5-mini-2025-08-07', label: 'GPT-5 Mini 2025-08-07' },
+        { value: 'openai/gpt-5-nano-2025-08-07', label: 'GPT-5 Nano 2025-08-07' },
+        { value: 'gpt-5-nano-2025-08-07', label: 'GPT-5 Nano 2025-08-07' },
+        { value: 'openai/gpt-5-chat-latest', label: 'GPT-5 Chat Latest' },
+        { value: 'gpt-5-chat-latest', label: 'GPT-5 Chat Latest' },
+
+        // Qwen, Mistral, Llama, etc.
+        { value: 'Qwen/Qwen2-72B-Instruct', label: 'Qwen2-72B Instruct' },
+        { value: 'mistralai/Mixtral-8x7B-Instruct-v0.1', label: 'Mixtral 8x7B Instruct v0.1' },
+        { value: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', label: 'Llama 3.3 70B Instruct Turbo' },
+        { value: 'meta-llama/Llama-3.2-3B-Instruct-Turbo', label: 'Llama 3.2 3B Instruct Turbo' },
+        { value: 'meta-llama/Llama-Guard-3-11B-Vision-Turbo', label: 'Llama Guard 3 11B Vision Turbo' },
+        { value: 'Qwen/Qwen2.5-7B-Instruct-Turbo', label: 'Qwen2.5 7B Instruct Turbo' },
+        { value: 'Qwen/Qwen2.5-Coder-32B-Instruct', label: 'Qwen2.5 Coder 32B Instruct' },
+        { value: 'meta-llama/Meta-Llama-3-8B-Instruct-Lite', label: 'Meta-Llama 3 8B Instruct Lite' },
+        { value: 'meta-llama/Llama-3-70b-chat-hf', label: 'Llama 3 70B Chat HF' },
+        { value: 'Qwen/Qwen2.5-72B-Instruct-Turbo', label: 'Qwen2.5 72B Instruct Turbo' },
+        { value: 'Qwen/QwQ-32B', label: 'QwQ 32B' },
+        { value: 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo', label: 'Meta-Llama 3.1 405B Instruct Turbo' },
+        { value: 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo', label: 'Meta-Llama 3.1 8B Instruct Turbo' },
+        { value: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', label: 'Meta-Llama 3.1 70B Instruct Turbo' },
+        { value: 'mistralai/Mistral-7B-Instruct-v0.2', label: 'Mistral 7B Instruct v0.2' },
+        { value: 'meta-llama/LlamaGuard-2-8b', label: 'LlamaGuard 2 8B' },
+        { value: 'mistralai/Mistral-7B-Instruct-v0.1', label: 'Mistral 7B Instruct v0.1' },
+        { value: 'mistralai/Mistral-7B-Instruct-v0.3', label: 'Mistral 7B Instruct v0.3' },
+        { value: 'meta-llama/Meta-Llama-Guard-3-8B', label: 'Meta-Llama Guard 3 8B' },
+        { value: 'meta-llama/llama-4-scout', label: 'Llama 4 Scout' },
+        { value: 'meta-llama/Llama-4-Scout-17B-16E-Instruct', label: 'Llama 4 Scout 17B 16E Instruct' },
+        { value: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick' },
+        { value: 'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8', label: 'Llama 4 Maverick 17B 128E Instruct FP8' },
+        { value: 'Qwen/Qwen3-235B-A22B-fp8-tput', label: 'Qwen3 235B A22B FP8 TPUT' },
+
+        // Anthropic Claude
+        { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus 20240229', category: 'Anthropic' },
+        { value: 'anthropic/claude-3-opus-20240229', label: 'Claude 3 Opus 20240229', category: 'Anthropic' },
+        { value: 'anthropic/claude-3-opus', label: 'Claude 3 Opus', category: 'Anthropic' },
+        { value: 'claude-3-opus-latest', label: 'Claude 3 Opus Latest', category: 'Anthropic' },
+        { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku 20240307', category: 'Anthropic' },
+        { value: 'anthropic/claude-3-haiku-20240307', label: 'Claude 3 Haiku 20240307', category: 'Anthropic' },
+        { value: 'anthropic/claude-3-haiku', label: 'Claude 3 Haiku', category: 'Anthropic' },
+        { value: 'claude-3-haiku-latest', label: 'Claude 3 Haiku Latest', category: 'Anthropic' },
+        { value: 'claude-3-5-sonnet-20240620', label: 'Claude 3.5 Sonnet 20240620', category: 'Anthropic' },
+        { value: 'anthropic/claude-3.5-sonnet-20240620', label: 'Claude 3.5 Sonnet 20240620', category: 'Anthropic' },
+        { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet 20241022', category: 'Anthropic' },
+        { value: 'anthropic/claude-3.5-sonnet-20241022', label: 'Claude 3.5 Sonnet 20241022', category: 'Anthropic' },
+        { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet', category: 'Anthropic' },
+        { value: 'claude-3-5-sonnet-latest', label: 'Claude 3.5 Sonnet Latest', category: 'Anthropic' },
+        { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku 20241022', category: 'Anthropic' },
+        { value: 'anthropic/claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku 20241022', category: 'Anthropic' },
+        { value: 'anthropic/claude-3-5-haiku', label: 'Claude 3.5 Haiku', category: 'Anthropic' },
+        { value: 'claude-3-5-haiku-latest', label: 'Claude 3.5 Haiku Latest', category: 'Anthropic' },
+        { value: 'claude-3-7-sonnet-20250219', label: 'Claude 3.7 Sonnet 20250219', category: 'Anthropic' },
+        { value: 'claude-3-7-sonnet-latest', label: 'Claude 3.7 Sonnet Latest', category: 'Anthropic' },
+        { value: 'anthropic/claude-3.7-sonnet', label: 'Claude 3.7 Sonnet', category: 'Anthropic' },
+        { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 20250514', category: 'Anthropic' },
+        { value: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4', category: 'Anthropic' },
+        { value: 'anthropic/claude-sonnet-4-20250514', label: 'Claude Sonnet 4 20250514', category: 'Anthropic' },
+        { value: 'claude-sonnet-4-latest', label: 'Claude Sonnet 4 Latest', category: 'Anthropic' },
+        { value: 'claude-opus-4-20250514', label: 'Claude Opus 4 20250514', category: 'Anthropic' },
+        { value: 'anthropic/claude-opus-4', label: 'Claude Opus 4', category: 'Anthropic' },
+        { value: 'anthropic/claude-opus-4-20250514', label: 'Claude Opus 4 20250514', category: 'Anthropic' },
+        { value: 'claude-opus-4-latest', label: 'Claude Opus 4 Latest', category: 'Anthropic' },
+        { value: 'claude-opus-4-1-20250805', label: 'Claude Opus 4.1 20250805', category: 'Anthropic' },
+        { value: 'claude-opus-4-1', label: 'Claude Opus 4.1', category: 'Anthropic' },
+        { value: 'anthropic/claude-opus-4.1', label: 'Claude Opus 4.1', category: 'Anthropic' },
+
+        // Gemini
+        { value: 'google/gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash Exp' },
+        { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash Exp' },
+        { value: 'google/gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+        { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+        { value: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+        { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+        { value: 'google/gemini-2.5-flash-lite-preview', label: 'Gemini 2.5 Flash Lite Preview' },
+
+        // DeepSeek
+        { value: 'deepseek-chat', label: 'DeepSeek Chat' },
+        { value: 'deepseek/deepseek-chat-v3-0324', label: 'DeepSeek Chat v3 0324' },
+        { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+        { value: 'deepseek/deepseek-r1', label: 'DeepSeek R1' },
+        { value: 'deepseek/deepseek-chat-v3.1', label: 'DeepSeek Chat v3.1' },
+        { value: 'deepseek/deepseek-chat', label: 'DeepSeek Chat' },
+        { value: 'deepseek/deepseek-reasoner-v3.1', label: 'DeepSeek Reasoner v3.1' },
+        { value: 'deepseek/deepseek-reasoner', label: 'DeepSeek Reasoner' },
+        { value: 'deepseek/deepseek-prover-v2', label: 'DeepSeek Prover v2' },
+
+        // Alibaba Qwen
+        { value: 'alibaba/qwen-max', label: 'Qwen Max' },
+        { value: 'qwen-max', label: 'Qwen Max' },
+        { value: 'alibaba/qwen-plus', label: 'Qwen Plus' },
+        { value: 'qwen-plus', label: 'Qwen Plus' },
+        { value: 'alibaba/qwen-turbo', label: 'Qwen Turbo' },
+        { value: 'qwen-turbo', label: 'Qwen Turbo' },
+        { value: 'alibaba/qwen-max-2025-01-25', label: 'Qwen Max 2025-01-25' },
+        { value: 'qwen-max-2025-01-25', label: 'Qwen Max 2025-01-25' },
+        { value: 'alibaba/qwen3-coder-480b-a35b-instruct', label: 'Qwen3 Coder 480B A35B Instruct' },
+        { value: 'qwen3-coder-480b-a35b-instruct', label: 'Qwen3 Coder 480B A35B Instruct' },
+        { value: 'alibaba/qwen3-32b', label: 'Qwen3 32B' },
+        { value: 'qwen3-32b', label: 'Qwen3 32B' },
+        { value: 'alibaba/qwen3-max-preview', label: 'Qwen3 Max Preview' },
+        { value: 'qwen3-max-preview', label: 'Qwen3 Max Preview' },
+        { value: 'alibaba/qwen3-235b-a22b-thinking-2507', label: 'Qwen3 235B A22B Thinking 2507' },
+        { value: 'qwen3-235b-a22b-thinking-2507', label: 'Qwen3 235B A22B Thinking 2507' },
+        { value: 'alibaba/qwen3-next-80b-a3b-thinking', label: 'Qwen3 Next 80B A3B Thinking' },
+        { value: 'qwen3-next-80b-a3b-thinking', label: 'Qwen3 Next 80B A3B Thinking' },
+        { value: 'alibaba/qwen3-next-80b-a3b-instruct', label: 'Qwen3 Next 80B A3B Instruct' },
+        { value: 'qwen3-next-80b-a3b-instruct', label: 'Qwen3 Next 80B A3B Instruct' },
+
+        // Mistral
+        { value: 'mistralai/mistral-tiny', label: 'Mistral Tiny' },
+        { value: 'mistralai/mistral-nemo', label: 'Mistral Nemo' },
+        { value: 'mistralai/codestral-2501', label: 'Codestral 2501' },
+
+        // Anthracite, Nvidia, MiniMax, Bagoodex, Moonshot, Grok, Perplexity, Zhipu
+        { value: 'anthracite-org/magnum-v4-72b', label: 'Magnum v4 72B' },
+        { value: 'nvidia/llama-3.1-nemotron-70b-instruct', label: 'Llama 3.1 Nemotron 70B Instruct' },
+        { value: 'google/gemma-3-4b-it', label: 'Gemma 3 4B IT' },
+        { value: 'google/gemma-3-12b-it', label: 'Gemma 3 12B IT' },
+        { value: 'google/gemma-3-27b-it', label: 'Gemma 3 27B IT' },
+        { value: 'google/gemma-3n-e4b-it', label: 'Gemma 3N E4B IT' },
+        { value: 'cohere/command-a', label: 'Cohere Command A' },
+        { value: 'openai/gpt-oss-120b', label: 'GPT OSS 120B' },
+        { value: 'openai/gpt-oss-20b', label: 'GPT OSS 20B' },
+        { value: 'nousresearch/hermes-4-405b', label: 'Hermes 4 405B' },
+        { value: 'MiniMax-Text-01', label: 'MiniMax Text 01' },
+        { value: 'minimax/m1', label: 'MiniMax M1' },
+        { value: 'MiniMax-M1', label: 'MiniMax M1' },
+        { value: 'bagoodex/bagoodex-search-v1', label: 'AI Search Engine', category: 'AI Agent' },
+        { value: 'moonshot/kimi-k2-preview', label: 'Moonshot Kimi K2 Preview', supportsWebSearch: true, category: 'Web Search' },
+        { value: 'kimi-k2-0711-preview', label: 'Kimi K2 0711 Preview' },
+        { value: 'x-ai/grok-4-07-09', label: 'Grok 4 07-09' },
+        { value: 'grok-4-0709', label: 'Grok 4 0709' },
+        { value: 'x-ai/grok-3-beta', label: 'Grok 3 Beta' },
+        { value: 'grok-3', label: 'Grok 3' },
+        { value: 'x-ai/grok-3-mini-beta', label: 'Grok 3 Mini Beta' },
+        { value: 'grok-3-mini', label: 'Grok 3 Mini' },
+        { value: 'x-ai/grok-code-fast-1', label: 'Grok Code Fast 1' },
+        { value: 'grok-code-fast-1', label: 'Grok Code Fast 1' },
+        { value: 'perplexity/sonar', label: 'Perplexity Sonar', supportsWebSearch: true, category: 'Web Search' },
+        { value: 'sonar', label: 'Sonar', supportsWebSearch: true, category: 'Web Search' },
+        { value: 'perplexity/sonar-pro', label: 'Perplexity Sonar Pro', supportsWebSearch: true, category: 'Web Search' },
+        { value: 'sonar-pro', label: 'Sonar Pro', supportsWebSearch: true, category: 'Web Search' },
+        { value: 'zhipu/glm-4.5', label: 'GLM 4.5' },
+        { value: 'glm-4.5', label: 'GLM 4.5' },
+        { value: 'zhipu/glm-4.5-air', label: 'GLM 4.5 Air' },
+        { value: 'glm-4.5-air', label: 'GLM 4.5 Air' },
+
+        // // Existing models (for backward compatibility)
+        // { value: 'google/gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+        // { value: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+        // { value: 'openai/gpt-4.1-nano-2025-04-14', label: 'GPT4o Nano' },
+        // { value: 'openai/gpt-4o-mini-search-preview', label: 'GPT-4o Mini Search Preview', supportsWebSearch: true, category: 'Web Search' },
+        // { value: 'openai/gpt-4o-search-preview', label: 'GPT-4o Search Preview', supportsWebSearch: true, category: 'Web Search' },
+        // { value: 'perplexity/sonar', label: 'Perplexity Sonar', supportsWebSearch: true, category: 'Web Search' },
+        // { value: 'perplexity/sonar-pro', label: 'Perplexity Sonar Pro', supportsWebSearch: true, category: 'Web Search' },
+        // { value: 'moonshot/kimi-k2-preview', label: 'Moonshot Kimi K2 Preview', supportsWebSearch: true, category: 'Web Search' },
+        // { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4', category: 'Anthropic' },
+        // { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', category: 'Anthropic' },
+        // { value: 'bagoodex/bagoodex-search-v1', label: 'AI Search Engine', category: 'AI Agent' }
+    ];
 
     const fetchAllFolders = async () => {
         try {
@@ -1585,7 +1864,8 @@ const Agents = ({ project }: { project: any }) => {
                 model: newAgentModel,
                 instructions: newAgentInstructions,
                 context_type: contextType,
-                context_folder: newAgentContextFolder?.id || null
+                context_folder: newAgentContextFolder?.id || null,
+                model_params: newAgentModelParams
             });
         if (error) setError(error.message);
 
@@ -1596,6 +1876,7 @@ const Agents = ({ project }: { project: any }) => {
         setNewAgentInstructions('');
         setNewAgentContextFolder(null);
         setContextType('all');
+        setNewAgentModelParams({});
 
         fetchAgents();
     }
@@ -1608,6 +1889,7 @@ const Agents = ({ project }: { project: any }) => {
         setEditAgentInstructions(agent.instructions || '');
         setEditContextType(agent.context_type);
         setEditAgentContextFolder(agent.context_folder || null);
+        setEditAgentModelParams(agent.model_params || {});
         setEditDialogOpen(true);
     }
 
@@ -1622,7 +1904,8 @@ const Agents = ({ project }: { project: any }) => {
                 model: editAgentModel,
                 instructions: editAgentInstructions,
                 context_type: editContextType,
-                context_folder: editAgentContextFolder?.id || null
+                context_folder: editAgentContextFolder?.id || null,
+                model_params: editAgentModelParams
             })
             .eq('id', editingAgent.id);
 
@@ -1774,7 +2057,6 @@ const Agents = ({ project }: { project: any }) => {
                             onChange={(e) => setNewAgentInstructions(e.target.value)}
                         />
                         <Select
-                            defaultValue="gemini-2.0-flash"
                             value={newAgentModel}
                             onValueChange={(value) => setNewAgentModel(value)}
                         >
@@ -1782,14 +2064,41 @@ const Agents = ({ project }: { project: any }) => {
                                 <SelectValue placeholder="Select Model" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="google/gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
-                                <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
-                                <SelectItem value="openai/gpt-4.1-nano-2025-04-14">GPT4o Nano</SelectItem>
-                                <SelectItem value='perplexity/sonar'>Perpexility Sonar</SelectItem>
-                                <SelectItem value='perplexity/sonar-pro'>Perpexility Sonar Pro</SelectItem>
-                                <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
+                                {modelOptions.map((model) => (
+                                    <SelectItem
+                                        key={model.value}
+                                        value={model.value}
+                                        className={model.supportsWebSearch ? 'border-l-2 border-blue-500' : ''}
+                                    >
+                                        <div className="flex items-center justify-between w-full">
+                                            <span>{model.label}</span>
+                                            {model.category && (
+                                                <span className="text-xs text-blue-500 ml-2">{model.category}</span>
+                                            )}
+                                        </div>
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
+                        {modelOptions.find(m => m.value === newAgentModel)?.supportsWebSearch && (
+                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm space-y-2">
+                                <div className="font-medium mb-1">Web Search Enabled</div>
+                                <div className="flex items-center space-x-2">
+                                    <Switch
+                                        id="deep-search"
+                                        checked={newAgentModelParams.search_mode === 'deep'}
+                                        onCheckedChange={(checked: any) => {
+                                            setNewAgentModelParams((prev: any) => ({ ...prev, search_mode: checked ? 'deep' : undefined }))
+                                        }}
+                                    />
+                                    <Label htmlFor="deep-search">Deep Search</Label>
+                                </div>
+                                <p className="text-blue-700 dark:text-blue-300">
+                                    Deep Search provides more thorough results but may take longer.
+                                </p>
+                            </div>
+                        )}
+
                         <Select
                             defaultValue="all"
                             value={contextType}
@@ -1885,14 +2194,40 @@ const Agents = ({ project }: { project: any }) => {
                                 <SelectValue placeholder="Select Model" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="google/gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
-                                <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
-                                <SelectItem value="openai/gpt-4.1-nano-2025-04-14">GPT4o Nano</SelectItem>
-                                <SelectItem value='perplexity/sonar'>Perpexility Sonar</SelectItem>
-                                <SelectItem value='perplexity/sonar-pro'>Perpexility Sonar Pro</SelectItem>
-                                <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
+                                {modelOptions.map((model) => (
+                                    <SelectItem
+                                        key={model.value}
+                                        value={model.value}
+                                        className={model.supportsWebSearch ? 'border-l-2 border-blue-500' : ''}
+                                    >
+                                        <div className="flex items-center justify-between w-full">
+                                            <span>{model.label}</span>
+                                            {model.category && (
+                                                <span className="text-xs text-blue-500 ml-2">{model.category}</span>
+                                            )}
+                                        </div>
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
+                        {modelOptions.find(m => m.value === editAgentModel)?.supportsWebSearch && (
+                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm space-y-2">
+                                <div className="font-medium mb-1">Web Search Enabled</div>
+                                <div className="flex items-center space-x-2">
+                                    <Switch
+                                        id="edit-deep-search"
+                                        checked={editAgentModelParams.search_mode === 'deep'}
+                                        onCheckedChange={(checked: any) => {
+                                            setEditAgentModelParams((prev: any) => ({ ...prev, search_mode: checked ? 'deep' : undefined }))
+                                        }}
+                                    />
+                                    <Label htmlFor="edit-deep-search">Deep Search</Label>
+                                </div>
+                                <p className="text-blue-700 dark:text-blue-300">
+                                    Deep Search provides more thorough results but may take longer.
+                                </p>
+                            </div>
+                        )}
                         <Select
                             value={editContextType}
                             onValueChange={(value) => setEditContextType(value)}
@@ -2653,21 +2988,30 @@ const ResponseLibrary = ({ project }: { project: any }) => {
         }
     }
 
-    const fetchSavedResponses = async (folderId: string) => {
+    const fetchSavedResponses = async (folderId: string | null) => {
         try {
+            setLoading(true);
             const { data, error } = await supabase
                 .from('saved_responses')
                 .select('*')
+                .eq('project_id', project.id)
                 .eq('folder_id', folderId)
                 .order('created_at', { ascending: false });
 
-            if (error) throw error;
+            if (error) {
+                console.error('Error fetching responses:', error);
+                toast.error('Failed to load responses');
+                return;
+            }
+
             setSavedResponses(data || []);
         } catch (error) {
-            console.error('Error fetching saved responses:', error);
-            toast.error('Failed to load saved responses');
+            console.error('Error fetching responses:', error);
+            toast.error('Failed to load responses');
+        } finally {
+            setLoading(false);
         }
-    };
+    }
 
     const navigateToFolder = async (folder: any) => {
         setCurrentFolder(folder);
@@ -2681,8 +3025,10 @@ const ResponseLibrary = ({ project }: { project: any }) => {
     const navigateToRoot = async () => {
         setCurrentFolder(null);
         setBreadcrumb([]);
-        setSavedResponses([]);
-        await fetchFolders(null);
+        await Promise.all([
+            fetchFolders(null),
+            fetchSavedResponses(null)
+        ]);
     }
 
     const navigateToBreadcrumb = async (index: number) => {
@@ -2747,7 +3093,7 @@ const ResponseLibrary = ({ project }: { project: any }) => {
 
     useEffect(() => {
         if (project?.id) {
-            fetchFolders(null);
+            navigateToRoot();
         }
     }, [project?.id]);
 
@@ -2921,7 +3267,7 @@ const ResponseLibrary = ({ project }: { project: any }) => {
                     )}
 
                     {/* Saved Responses Section */}
-                    {savedResponses.length > 0 && (
+                    {currentFolder && savedResponses.length > 0 && (
                         <div className="rounded-lg shadow-sm border p-4">
                             <h3 className="text-xl font-semibold mb-4">
                                 Saved Responses in "{currentFolder?.name || 'Root'}"

@@ -56,7 +56,7 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <header className="flex justify-end items-center p-4 gap-4 h-16">
+            <header className="flex justify-end items-center p-4 gap-4 h-16 fixed top-0 bottom-0 right-0 left-0">
               <SignedOut>
                 <SignInButton />
                 <SignUpButton>

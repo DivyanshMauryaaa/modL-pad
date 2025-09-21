@@ -12,6 +12,7 @@ interface MessageBubbleProps {
   onRetry?: () => void;
   projectId: string;
   chatId: string;
+  responseStatus: 'loading' | 'completed' | 'error';
 }
 
 const MessageBubble = ({
@@ -19,11 +20,13 @@ const MessageBubble = ({
   agents,
   onRetry,
   projectId,
-  chatId
+  chatId,
+  responseStatus
 }: MessageBubbleProps) => {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
+  const [responseLoading, setResponseLoading] = useState(responseStatus);
 
   // Handle different output types
   const renderMediaContent = () => {
@@ -149,7 +152,7 @@ const MessageBubble = ({
             ? 'bg-card'
             : message.isError
             ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300'
-            : 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-700'
+            : 'w-full'
         }`}>
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
@@ -177,13 +180,11 @@ const MessageBubble = ({
           <div className="flex gap-2 mt-3">
             {message.role === 'assistant' && onRetry && (
               <Button
-                variant="outline"
                 size="sm"
                 onClick={onRetry}
                 className="text-xs h-8"
               >
                 <RefreshCw className="h-3 w-3 mr-1" />
-                Retry
               </Button>
             )}
             

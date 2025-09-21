@@ -822,6 +822,7 @@ const Chat = ({ project }: ChatProps) => {
                         onRetry={message.role === 'assistant' && index === messages.length - 1 ? retryMessage : undefined}
                         projectId={project.id}
                         chatId={selectedChatId}
+                        responseStatus={sendingMessage && index === messages.length - 1 ? 'loading' : message.isError ? 'error' : 'completed'}
                       />
                     ))}
 
@@ -914,7 +915,6 @@ const Chat = ({ project }: ChatProps) => {
                         suggestions: {
                           border: '1px solid rgb(226 232 240)',
                           borderRadius: '16px',
-                          background: 'white',
                           boxShadow: '0 20px 40px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(59, 130, 246, 0.05)',
                           backdropFilter: 'blur(12px)',
                           marginTop: '8px',
@@ -931,9 +931,10 @@ const Chat = ({ project }: ChatProps) => {
                         style={{
                           background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
                           borderRadius: '8px',
-                          padding: '4px 8px',
+                          padding: '4px',
                           fontWeight: '600',
-                          color: 'white',
+                          color: 'transparent',
+                          marginRight: '2px',
                           boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
                           border: '1px solid rgba(255, 255, 255, 0.2)',
                           transition: 'all 0.3s ease',

@@ -13,6 +13,7 @@ import TypingAnimation from '../TypingAnimation';
 import checkPro from '../checkPremium';
 import { OpenAI } from 'openai';
 import supabase from '@/lib/supabase';
+import { useParams, useRouter } from 'next/navigation';
 
 interface ChatProps {
   project: any;
@@ -53,6 +54,9 @@ interface Agent {
 }
 
 const Chat = ({ project }: ChatProps) => {
+  const params = useParams();
+  const projectId = params.projectId as string;
+
   const [prompt, setPrompt] = useState('');
   const [chats, setChats] = useState<any[]>([]);
   const [selectedChatId, setSelectedChatId] = useState('');
@@ -798,7 +802,7 @@ const Chat = ({ project }: ChatProps) => {
               ref={chatContainerRef}
               className="flex-1 overflow-y-auto p-3 max-h-[80vh]"
             >
-              <div className="max-w-4xl mx-auto space-y-6">
+              <div className="max-w-6xl mx-auto space-y-6">
                 {messages.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="w-20 h-20 mx-auto mb-4 flex items-center justify-center">
@@ -820,7 +824,7 @@ const Chat = ({ project }: ChatProps) => {
                         message={message}
                         agents={agents}
                         onRetry={message.role === 'assistant' && index === messages.length - 1 ? retryMessage : undefined}
-                        projectId={project.id}
+                        projectId={projectId}
                         chatId={selectedChatId}
                         responseStatus={sendingMessage && index === messages.length - 1 ? 'loading' : message.isError ? 'error' : 'completed'}
                       />

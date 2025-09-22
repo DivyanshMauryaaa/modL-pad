@@ -1230,7 +1230,7 @@ const ResponseLibrary = ({ project }: { project: any }) => {
                                 value="preview"
                                 className="flex-1 overflow-auto border rounded-md p-4"
                             >
-                                <MarkdownRenderer content={editResponseContent} />
+                                <MarkdownRenderer content={editResponseContent} projectId={project.id} />
                             </TabsContent>
                         </Tabs>
                     </div>

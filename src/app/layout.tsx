@@ -7,21 +7,11 @@ import {
   SignedOut,
   UserButton,
 } from '@clerk/nextjs'
-import { Geist, Geist_Mono, Raleway } from 'next/font/google'
+import { Raleway } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme/themeprovider'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { Toaster } from 'sonner'
-
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-})
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-})
 
 export const metadata: Metadata = {
   title: 'ModelComms',
@@ -32,7 +22,6 @@ const raleway = Raleway({
   variable: '--font-raleway',
   subsets: ['latin'], // keep this
 })
-
 
 export default function RootLayout({
   children,
@@ -55,14 +44,14 @@ export default function RootLayout({
       afterSignUpUrl="/"
     >
       <html lang="en" suppressHydrationWarning cz-shortcut-listen="true">
-        <body className={`${raleway.variable} ${geistMono.variable} antialiased`}>
+        <body className={`${raleway.variable} antialiased`}>
           <ThemeProvider
             attribute="class"
             defaultTheme="system"
             enableSystem
             disableTransitionOnChange
           >
-            <header className="flex justify-end items-center p-4 gap-4 h-16 fixed top-0 bottom-0 right-0 left-0 bg-blur bg-ceramic-white/80 dark:bg-ceramic-black/80 backdrop-blur z-10">
+            <header className="flex justify-end items-center p-4 gap-4 h-16 fixed top-0 bottom-0 right-0 left-0 bg-blur bg-ceramic-white/80 dark:bg-ceramic-black/80 backdrop-blur z-30 overflow-visible">
               <SignedOut>
                 <SignInButton />
                 <SignUpButton>

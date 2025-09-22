@@ -44,7 +44,13 @@ const MessageBubble = ({
             />
             {message.content && (
               <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                <MarkdownRenderer content={message.content} />
+                <MarkdownRenderer 
+                    content={message.content} 
+                    projectId={projectId}
+                    agentId={message.agent_id}
+                    chatId={chatId}
+                    originalMessageId={message.id}
+                />
               </div>
             )}
           </div>
@@ -65,7 +71,13 @@ const MessageBubble = ({
             </video>
             {message.content && (
               <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                <MarkdownRenderer content={message.content} />
+                <MarkdownRenderer 
+                    content={message.content} 
+                    projectId={projectId}
+                    agentId={message.agent_id}
+                    chatId={chatId}
+                    originalMessageId={message.id}
+                />
               </div>
             )}
           </div>
@@ -124,14 +136,26 @@ const MessageBubble = ({
             
             {message.content && (
               <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                <MarkdownRenderer content={message.content} />
+                <MarkdownRenderer 
+                    content={message.content} 
+                    projectId={projectId}
+                    agentId={message.agent_id}
+                    chatId={chatId}
+                    originalMessageId={message.id}
+                />
               </div>
             )}
           </div>
         );
 
       default: // text
-        return <MarkdownRenderer content={message.content} />;
+        return <MarkdownRenderer 
+                    content={message.content} 
+                    projectId={projectId}
+                    agentId={message.agent_id}
+                    chatId={chatId}
+                    originalMessageId={message.id}
+                />;
     }
   };
 
@@ -147,12 +171,12 @@ const MessageBubble = ({
   return (
     <>
       <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-        <div className={`max-w-[80%] rounded-2xl p-4 ${
+        <div className={`max-w-[90%] rounded-2xl p-4 chat-message ${
           message.role === 'user'
             ? 'bg-card'
             : message.isError
             ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300'
-            : 'w-full'
+            : 'bg-card'
         }`}>
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">

@@ -63,8 +63,8 @@ export default function RootLayout({
               <SignedIn>
                 <div className="flex justify-between w-[90%]">
                   <div>
-                    <p className="text-3xl hover:underline cursor-pointer">
-                      ModLPad.ai
+                    <p className="text-3xl cursor-pointer">
+                      DBFlow
                     </p> 
                   </div>
                   <div className="gap-2 flex">

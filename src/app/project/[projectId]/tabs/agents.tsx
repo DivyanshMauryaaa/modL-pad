@@ -864,6 +864,28 @@ const Agents = ({ project }: { project: any }) => {
         </SheetContent>
       </Sheet>
 
+      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+        <DialogTrigger asChild>
+          <div className="border rounded-lg p-4 hover:border-black cursor-pointer">
+            <div className="p-4 text-center text-3xl font-semibold">
+              Add Agent
+            </div>
+          </div>
+        </DialogTrigger>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              <Bot className="w-10 h-10 mb-2" />
+              Add Agent
+            </DialogTitle>
+            <DialogDescription>
+              Add a new agent to your project.
+            </DialogDescription>
+          </DialogHeader>
+          <AgentForm isEdit={false} />
+        </DialogContent>
+      </Dialog>
+
       {/* Folder Selection Dialogs */}
       <FolderDialog isEdit={false} />
       <FolderDialog isEdit={true} />
@@ -912,28 +934,6 @@ const Agents = ({ project }: { project: any }) => {
               </div>
             </div>
           ))}
-
-          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-            <DialogTrigger asChild>
-              <div className="border rounded-lg p-4 hover:border-black cursor-pointer">
-                <div className="p-4 text-center text-3xl font-semibold">
-                  Add Agent
-                </div>
-              </div>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>
-                  <Bot className="w-10 h-10 mb-2" />
-                  Add Agent
-                </DialogTitle>
-                <DialogDescription>
-                  Add a new agent to your project.
-                </DialogDescription>
-              </DialogHeader>
-              <AgentForm isEdit={false} />
-            </DialogContent>
-          </Dialog>
         </div>
       )}
     </div>

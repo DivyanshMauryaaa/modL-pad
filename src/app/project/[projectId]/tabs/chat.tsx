@@ -14,6 +14,7 @@ import checkPro from '../checkPremium';
 import { OpenAI } from 'openai';
 import supabase from '@/lib/supabase';
 import { useParams, useRouter } from 'next/navigation';
+import { WebSearchResults, SaveResponseDialog } from '../SharedComponents';
 
 interface ChatProps {
   project: any;

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Bot, RefreshCw, Save, Play, Pause, Download } from "lucide-react";
 import MarkdownRenderer from "./markdown";
-import { SaveResponseDialog, WebSearchResults } from "./page";
+import { SaveResponseDialog, WebSearchResults } from "./SharedComponents";
 
 interface MessageBubbleProps {
   message: any;

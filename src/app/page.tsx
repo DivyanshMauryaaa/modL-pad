@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
+import { SignedIn, useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger, DialogTitle, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -62,28 +62,30 @@ export default function Home() {
     <div className="p-5 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-5xl font-semibold">Projects</h1>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>Add New Project</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogTitle>Add New Project</DialogTitle>
-            <div className="space-y-4 pt-4">
-              <Input
-                placeholder="Name your Project"
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-              />
-              <Button
-                className="w-full hover:scale-110 cursor-pointer"
-                onClick={addProject}
-                disabled={!newProjectName.trim()}
-              >
-                Add Project
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <SignedIn>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>Add New Project</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogTitle>Add New Project</DialogTitle>
+              <div className="space-y-4 pt-4">
+                <Input
+                  placeholder="Name your Project"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                />
+                <Button
+                  className="w-full hover:scale-110 cursor-pointer"
+                  onClick={addProject}
+                  disabled={!newProjectName.trim()}
+                >
+                  Add Project
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </SignedIn>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Card, CardTitle, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 import DebugAuth from "@/components/debug-auth";
+import { CheckoutButton } from "@/components/checkoutbutton";
 
 export default function Home() {
   const { user } = useUser();
@@ -62,6 +63,7 @@ export default function Home() {
     <div className="p-5 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-5xl font-semibold">Projects</h1>
+        <CheckoutButton productId={process.env.NEXT_PUBLIC_POLAR_PRODUCT_ID!}>Upgrade</CheckoutButton>
         <SignedIn>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>

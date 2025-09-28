@@ -390,7 +390,7 @@ const Chat = ({ project }: ChatProps) => {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              model: 'flux/dev',
+              model: agent.model,
               prompt: finalMessages[finalMessages.length - 1].content,
             }),
           });

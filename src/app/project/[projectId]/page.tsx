@@ -5,7 +5,7 @@ import { Dialog, DialogTitle, DialogContent, DialogHeader, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import supabase from '@/lib/supabase';
 import { useUser } from '@clerk/nextjs';
-import { ArrowLeft, Bot, ChevronDown, ChevronRight, Edit3, FileText, Folder, FolderPlus, Home, Loader2, MessageCircle, Move, Save, Settings, Sparkles, Trash2, X, ZoomIn } from 'lucide-react';
+import { ArrowLeft, BlocksIcon, Bot, ChevronDown, ChevronRight, Edit3, FileText, Folder, FolderPlus, Home, Loader2, MessageCircle, Move, Save, Settings, Sparkles, Trash2, X, ZoomIn } from 'lucide-react';
 import { WebSearchResults, SaveResponseDialog } from './SharedComponents';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
@@ -79,16 +79,17 @@ interface MentionData {
 }
 
 const Context = ({ project }: { project: any }) => (
-    <div className="space-y-6">
-        <div className="flex justify-between items-center">
+    <div className="space-y-6 mt-12">
+        {/* <div className="flex justify-between items-center">
             <div className='flex gap-3'>
-                <ZoomIn size={65} />
-                <p className='text-6xl'>Context</p>
+                <BlocksIcon size={65} />
+                <p className='text-6xl'>Platforms' Context</p>
             </div>
-            <Button>Add Custom</Button>
-        </div>
-        <div className="p-4">
-
+            <Button>Add from Platform</Button>
+        </div> */}
+        <div className="p-4 border-t border-gray-400">
+            <p className='text-7xl font-bold'>Are you trying to find something?? ...Something that doesn't exist...yet</p>
+            <p className='text-sm text-gray-600 mt-1'>We know we didn't give the button to this page... But yeah, this feature is still under construction...</p>
         </div>
     </div>
 );
@@ -637,8 +638,8 @@ const ResponseLibrary = ({ project }: { project: any }) => {
             <div className='flex gap-3 p-5 rounded-lg'>
                 <Folder size={65} className="" />
                 <div>
-                    <p className='text-4xl font-bold'>Response Library</p>
-                    <p className='text-sm text-gray-600 mt-1'>Manage your saved responses and folders</p>
+                    <p className='text-4xl font-bold'>Library</p>
+                    <p className='text-sm text-gray-600 mt-1'>Organize your work here!</p>
                 </div>
             </div>
 
@@ -1166,7 +1167,7 @@ const ProjectPage = () => {
                                     className="justify-start"
                                     onClick={() => handleTabSwitch('responseLib')}
                                 >
-                                    Response Library
+                                    Library
                                 </Button>
                                 {/* <Button
                                     variant={activeTab === 'context' ? 'default' : 'ghost'}

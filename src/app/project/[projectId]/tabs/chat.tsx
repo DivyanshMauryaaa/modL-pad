@@ -13,8 +13,7 @@ import TypingAnimation from '../TypingAnimation';
 import checkPro from '../checkPremium';
 import { OpenAI } from 'openai';
 import supabase from '@/lib/supabase';
-import { useParams, useRouter } from 'next/navigation';
-import { WebSearchResults, SaveResponseDialog } from '../SharedComponents';
+import { useParams } from 'next/navigation';
 
 interface ChatProps {
   project: any;

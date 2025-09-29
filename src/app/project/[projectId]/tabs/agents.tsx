@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from 'react';
-import { Bot, Folder, ChevronRight, X, Home, ArrowLeft, Loader2, Trash2 } from 'lucide-react';
+import { Bot, Folder, ChevronRight, X, Home, ArrowLeft, Loader2, Trash2, WandSparkles, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -679,9 +679,10 @@ const Agents = ({ project }: { project: any }) => {
 
       <Sheet open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <SheetTrigger asChild>
-          <div className="border rounded-lg p-4 hover:border-black cursor-pointer">
-            <div className="p-4 text-center text-3xl font-semibold">
-              Add Agent
+          <div className="border rounded-lg p-4 hover:border-black dark:hover:border-white transition-all hover:bg-gray-200 max-h-[200px] dark:hover:bg-gray-900 duration-300 hover:text-3xl cursor-pointer mt-10">
+            <div className="p-4 text-center font-semibold flex items-center justify-center gap-2">
+              <WandSparkles />
+              Add a new Agent
             </div>
           </div>
         </SheetTrigger>
@@ -851,19 +852,23 @@ const Agents = ({ project }: { project: any }) => {
       {error && <div className="text-red-500">{error}</div>}
 
       {agents.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-30">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {agents.map((agent) => (
-            <div key={agent.id} className="border rounded-lg p-4">
+            <div key={agent.id} className="border hover:text-4xl transition-all duration-300 rounded-lg p-4">
               <div className="p-4">
-                <Bot className="w-10 h-10 mb-2" />
-                <h3 className="text-lg font-semibold mb-2">{agent.name}</h3>
-                <p className="text-gray-600 mb-2">{agent.description}</p>
-                {agent.context_folder && (
-                  <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-                    <Folder className="h-4 w-4" />
-                    <span>Context: {agent.context_folder.name}</span>
-                  </div>
-                )}
+                <h3 className="font-semibold mb-2">{agent.name}</h3>
+                <p className="text-gray-600 mb-2 text-sm">{agent.description}</p>
+                <div className="text-sm py-4">
+                  {agent.context_folder && (
+                    <p className='flex gap-2'><Folder className="h-6 w-6" /> Context: {agent.context_folder.name}</p>
+                  )}
+                  {agent.model && (
+                    <p className='flex gap-2'><WandSparkles className="h-6 w-6" /> Model: {agent.model}</p>
+                  )}
+                  {agent.output_type && (
+                    <p className='flex gap-2'><Brain className="h-6 w-6" /> Output Type: {agent.output_type}</p>
+                  )}
+                </div>
                 <Button
                   className="cursor-pointer"
                   variant={'secondary'}
@@ -883,7 +888,12 @@ const Agents = ({ project }: { project: any }) => {
                     </DialogHeader>
                     <DialogDescription>You won't be able to recover this agent afterwards.</DialogDescription>
                     <DialogFooter>
-                      <Button onClick={() => { deleteAgent(agent.id) }}>Yes, Delete</Button>
+                      <Button onClick={async () => {
+                        setDeleteDialog(false);
+                        const { error } = await supabase.from('agents').delete().eq('id', agent.id);
+                        if (error) throw error;
+                        fetchAgents();
+                      }}>Yes, Delete</Button>
                       <Button variant={'ghost'} onClick={() => { setDeleteDialog(false) }}>Cancel</Button>
                     </DialogFooter>
                   </DialogContent>

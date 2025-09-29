@@ -5,7 +5,7 @@ import { Dialog, DialogTitle, DialogContent, DialogHeader, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import supabase from '@/lib/supabase';
 import { useUser } from '@clerk/nextjs';
-import { ArrowLeft, BlocksIcon, Bot, ChevronDown, ChevronRight, Edit3, FileText, Folder, FolderPlus, Home, Loader2, MessageCircle, Move, Save, Settings, Sparkles, Trash2, X, ZoomIn } from 'lucide-react';
+import { ArrowLeft, BlocksIcon, Bot, ChevronDown, ChevronRight, Code, Edit3, FileText, Folder, FolderPlus, Home, Loader2, MessageCircle, Move, Save, Settings, Sparkles, Trash2, X, ZoomIn } from 'lucide-react';
 import { WebSearchResults, SaveResponseDialog } from './SharedComponents';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
@@ -20,6 +20,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import MarkdownRenderer from './markdown';
 import Chat from './tabs/chat';
 import Agents from './tabs/agents';
+import MonacoEditorComponent from '@/components/codeEditorMonaco';
 
 // moved WebSearchResults to SharedComponents
 
@@ -811,7 +812,12 @@ const ResponseLibrary = ({ project }: { project: any }) => {
                             <div className="grid gap-4">
                                 {savedResponses.map((response) => (
                                     <div key={response.id} className="p-4 border rounded-lg flex items-start gap-3 group relative">
-                                        <FileText className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                                        {response.type === 'md' && (
+                                            <FileText className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                                        )}
+                                        {response.type === 'code' && (
+                                            <Code className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                                        )}
                                         <div
                                             className="flex-1 cursor-pointer"
                                             onClick={() => openEditResponseDialog(response)}
@@ -937,6 +943,29 @@ const ResponseLibrary = ({ project }: { project: any }) => {
                                         placeholder="Response content"
                                         value={editResponseContent}
                                         onChange={(e) => setEditResponseContent(e.target.value)}
+                                        className="h-full resize-none"
+                                    />
+                                )}
+                                {responseType === 'code' && (
+                                    <MonacoEditorComponent
+                                        value={editResponseContent}
+                                        onChange={(e) => setEditResponseContent(e)}
+                                        language="auto"
+                                        theme="vs-dark"
+                                        options={{
+                                            minimap: { enabled: true },
+                                            autoClosingBrackets: 'always',
+                                            automaticLayout: true,
+                                            fontSize: 14,
+                                            scrollBeyondLastLine: false,
+                                            wordWrap: "on",
+                                            lineNumbers: "on",
+                                            renderLineHighlight: "all",
+                                            tabSize: 2,
+                                            insertSpaces: true,
+                                            cursorBlinking: "blink",
+                                            cursorStyle: "line",
+                                        }}
                                         className="h-full resize-none"
                                     />
                                 )}

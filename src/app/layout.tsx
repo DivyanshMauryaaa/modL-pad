@@ -73,15 +73,16 @@ export default function RootLayout({
                 <div className="flex justify-between w-[90%]">
                   <div>
                     <p className="text-3xl cursor-pointer">
-                      DBFlow
-                    </p> 
+                      ModLpad
+                    </p>
                   </div>
                   <div className="gap-2 flex">
-                    <ThemeToggle />
                     <UserButton />
                   </div>
                 </div>
               </SignedIn>
+              <ThemeToggle />
+
             </header>
             <main className="pt-16">{children}</main>
             <Toaster richColors position="bottom-right" />

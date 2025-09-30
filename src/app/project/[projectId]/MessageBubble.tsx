@@ -46,6 +46,7 @@ const MessageBubble = memo(function MessageBubble({
   const handleDownload = useCallback(() => {
     const link = document.createElement('a');
     link.href = message.media_url;
+    link.download = "true";
     
     const extension = message.output_type === 'image' ? 'png' : 
                     message.output_type === 'video' ? 'mp4' : 

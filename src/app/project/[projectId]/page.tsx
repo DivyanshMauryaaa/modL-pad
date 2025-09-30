@@ -73,12 +73,6 @@ const OverviewTab = ({ project }: { project: any }) => (
     </div>
 );
 
-// Add this interface for mention data
-interface MentionData {
-    id: string;
-    display: string;
-}
-
 const Context = ({ project }: { project: any }) => (
     <div className="space-y-6 mt-12">
         {/* <div className="flex justify-between items-center">
@@ -1087,6 +1081,81 @@ const ResponseLibrary = ({ project }: { project: any }) => {
     )
 }
 
+interface NewChatDialogProps {
+    projectId: string;
+    onChatCreated: (chat: any) => void;
+}
+
+export const NewChatDialog: React.FC<NewChatDialogProps> = ({ projectId, onChatCreated }) => {
+    const [newChatName, setNewChatName] = useState('');
+    const [open, setOpen] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    const createNewChat = async () => {
+        if (!newChatName.trim()) {
+            toast.error('Please enter a chat name');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('chat')
+                .insert({
+                    project_id: projectId,
+                    name: newChatName,
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            onChatCreated(data);
+            setNewChatName('');
+            setOpen(false);
+            toast.success(`Chat "${data.name}" created successfully!`);
+        } catch (error) {
+            console.error('Error creating chat:', error);
+            toast.error('Failed to create chat');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Create New Chat</DialogTitle>
+                    <DialogDescription>
+                        Start a new conversation with your agents.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                    <Input
+                        placeholder="Chat name (e.g., 'Marketing Strategy Discussion')"
+                        value={newChatName}
+                        onChange={(e) => setNewChatName(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && newChatName.trim()) {
+                                createNewChat();
+                            }
+                        }}
+                    />
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setOpen(false)}>
+                        Cancel
+                    </Button>
+                    <Button onClick={createNewChat} disabled={!newChatName.trim() || loading}>
+                        {loading ? 'Creating...' : 'Create Chat'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 const ProjectPage = () => {
     const params = useParams();
     const router = useRouter();
@@ -1096,6 +1165,22 @@ const ProjectPage = () => {
     const [error, setError] = useState('')
     const { user } = useUser();
     const [loading, setLoading] = useState(true)
+    const [chats, setChats] = useState<any[]>([]);
+    const [selectedChatId, setSelectedChatId] = useState('');
+    const [addChatDialog, setAddChatDialog] = useState(false);
+    const [addChatName, setAddChatName] = useState('New Chat');
+
+    const addChat = async () => {
+        const { error } = await supabase.from('chat')
+        .insert({
+            name: addChatName,
+            project_id: projectId
+        })    
+
+        if (error) toast.error(error.message);
+        setAddChatDialog(false);
+        fetchChats();
+    }
 
     // Get current tab from URL params, default to 'overview'
     const activeTab = searchParams.get('tab') || 'overview';
@@ -1112,9 +1197,49 @@ const ProjectPage = () => {
         setLoading(false)
     }
 
+    // Fetch chats for the project
+    const fetchChats = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('chat')
+                .select('*')
+                .eq('project_id', projectId)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            setChats(data || []);
+        } catch (error) {
+            console.error('Error fetching chats:', error);
+        }
+    };
+
+    // Delete chat function
+    const deleteChat = async (chatId: string, chatName: string) => {
+        try {
+            const { error } = await supabase.from('chat').delete().eq('id', chatId);
+            if (error) throw error;
+
+            setChats(prev => prev.filter(chat => chat.id !== chatId));
+            if (selectedChatId === chatId) {
+                setSelectedChatId('');
+            }
+            toast.success(`Chat "${chatName}" deleted`);
+        } catch (error) {
+            console.error('Error deleting chat:', error);
+            toast.error('Failed to delete chat');
+        }
+    };
+
+    
+
     useEffect(() => {
-        if (user) fetchProjectDetails();
-    }, [user]);
+        if (user) {
+            fetchProjectDetails();
+            if (projectId) {
+                fetchChats();
+            }
+        }
+    }, [user, projectId]);
 
     // Function to handle tab switching
     const handleTabSwitch = (tab: string) => {
@@ -1129,7 +1254,14 @@ const ProjectPage = () => {
             case 'overview':
                 return <OverviewTab project={project} />;
             case 'chat':
-                return <Chat project={project} supabase={supabase} />;
+                return <Chat
+                    project={project}
+                    supabase={supabase}
+                    selectedChatId={selectedChatId}
+                    chats={chats}
+                    onChatsUpdate={setChats}
+                    onChatSelect={setSelectedChatId}
+                />
             case 'agents':
                 return <Agents project={project} />;
             case 'context':
@@ -1141,6 +1273,80 @@ const ProjectPage = () => {
             default:
                 return <OverviewTab project={project} />;
         }
+    };
+
+    // Render chat list in sidebar when on chat tab
+    const renderChatList = () => {
+        if (activeTab !== 'chat') return null;
+
+        return (
+            <div className="mt-6 border-t pt-6">
+                <h3 className="font-semibold mb-3 text-sm text-gray-700 dark:text-gray-300">Your Chats</h3>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {chats.length === 0 ? (
+                        <div className="text-center text-gray-500 text-sm p-3">
+                            <MessageCircle className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                            <p>No chats yet</p>
+                        </div>
+                    ) : (
+                        chats.map((chat: any) => (
+                            <div
+                                key={chat.id}
+                                className={`group p-3 rounded-lg cursor-pointer transition-all duration-200 ${selectedChatId === chat.id
+                                    ? 'bg-blue-100 dark:bg-blue-900 border border-blue-300 dark:border-blue-700'
+                                    : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    }`}
+                                onClick={() => setSelectedChatId(chat.id)}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <h4 className="font-medium text-sm truncate flex-1 pr-2">
+                                        {chat.name}
+                                    </h4>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={`opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 p-0 ${selectedChatId === chat.id
+                                            ? 'hover:bg-blue-200 dark:hover:bg-blue-800'
+                                            : 'hover:bg-red-100 dark:hover:bg-red-900'
+                                            }`}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            deleteChat(chat.id, chat.name);
+                                        }}
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    {chat.created_at ? new Date(chat.created_at).toLocaleDateString() : ''}
+                                </p>
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                {/* New Chat Button */}
+                <Dialog open={addChatDialog} onOpenChange={setAddChatDialog}>
+                    <DialogTrigger asChild>
+                        <Button className="w-full mt-4 cursor-pointer" variant="outline">
+                            <MessageCircle className="h-4 w-4 mr-2" />
+                            New Chat
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Start a new Chat</DialogTitle>
+                        </DialogHeader>
+                        <Input 
+                            className='p-5'
+                            value={addChatName}
+                            onChange={(e) => { setAddChatName(e.target.value) }}
+                        />
+                        <Button onClick={addChat}>Submit</Button>
+                    </DialogContent>
+                </Dialog>
+            </div>
+        );
     };
 
     if (loading) {
@@ -1168,14 +1374,7 @@ const ProjectPage = () => {
             {!error &&
                 <div>
                     <div className="flex border-t">
-                        {/* 
-                            The className "dark:border-gray-700" will only apply if your app or a parent element has the "dark" class on it.
-                            If you are not seeing the dark border, make sure:
-                            1. Your Tailwind config has "darkMode" enabled (e.g., "class" or "media").
-                            2. The <html> or <body> tag (or a parent) has the "dark" class applied when in dark mode.
-                            3. You are not overriding the border color elsewhere.
-                        */}
-                        <aside className="w-64 min-h-[100vh] border-r mr-8 p-4">
+                        <aside className="w-80 min-h-[100vh] border-r mr-8 p-4">
                             <nav className="flex flex-col gap-2">
                                 <Button
                                     variant={activeTab === 'overview' ? 'default' : 'ghost'}
@@ -1198,13 +1397,6 @@ const ProjectPage = () => {
                                 >
                                     Library
                                 </Button>
-                                {/* <Button
-                                    variant={activeTab === 'context' ? 'default' : 'ghost'}
-                                    className="justify-start"
-                                    onClick={() => handleTabSwitch('context')}
-                                >
-                                    Context
-                                </Button> */}
                                 <Button
                                     variant={activeTab === 'agents' ? 'default' : 'ghost'}
                                     className="justify-start"
@@ -1220,6 +1412,9 @@ const ProjectPage = () => {
                                     Settings
                                 </Button>
                             </nav>
+
+                            {/* Chat List - Only shown when in chat tab */}
+                            {renderChatList()}
                         </aside>
                         <main className="flex-1">
                             <div className="">

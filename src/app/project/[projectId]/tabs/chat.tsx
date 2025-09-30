@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { toast } from 'sonner';
 import { MessageCircle, Trash2, Loader2, Sparkles, Bot, SendHorizonal, AlertCircle } from 'lucide-react';
@@ -15,11 +15,15 @@ import { OpenAI } from 'openai';
 import supabase from '@/lib/supabase';
 import { useParams } from 'next/navigation';
 
+// Update the Chat component props interface
 interface ChatProps {
   project: any;
   supabase: any;
+  selectedChatId: string;
+  onChatSelect: (chatId: string) => void;
+  chats: any[];
+  onChatsUpdate: (chats: any[]) => void;
 }
-
 const api = new OpenAI({
   apiKey: process.env.NEXT_PUBLIC_AIML_API_KEY,
   dangerouslyAllowBrowser: true,
@@ -53,13 +57,12 @@ interface Agent {
   output_type: 'text' | 'image' | 'video' | 'audio';
 }
 
-const Chat = ({ project }: ChatProps) => {
+const Chat = ({ project, selectedChatId, onChatSelect, chats, onChatsUpdate }: ChatProps) => {
   const params = useParams();
   const projectId = params.projectId as string;
 
   const [prompt, setPrompt] = useState('');
-  const [chats, setChats] = useState<any[]>([]);
-  const [selectedChatId, setSelectedChatId] = useState('');
+  // const [AllChats, setChats] = useState<any[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newChatDialogOpen, setNewChatDialogOpen] = useState(false);
   const [newChatName, setNewChatName] = useState('');
@@ -116,16 +119,6 @@ const Chat = ({ project }: ChatProps) => {
     }
   }, [supabase]);
 
-  // Then update the fetchChats function call:
-  const fetchChats = useCallback(async () => {
-    await fetchData(
-      'chat',
-      { project_id: project.id },
-      setChats,
-      'Failed to load chats'
-    );
-  }, [project.id, fetchData]);
-
   // Fetch agents
   const fetchAgents = useCallback(async () => {
     try {
@@ -167,55 +160,6 @@ const Chat = ({ project }: ChatProps) => {
       toast.error('Failed to load messages');
     }
   }, [project.id, supabase]);
-
-  // Create new chat
-  const createNewChat = useCallback(async () => {
-    if (!newChatName.trim()) {
-      toast.error('Please enter a chat name');
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('chat')
-        .insert({
-          project_id: project.id,
-          name: newChatName,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setChats(prev => [data, ...prev]);
-      setSelectedChatId(data.id);
-      setMessages([]);
-      setNewChatName('');
-      setNewChatDialogOpen(false);
-      toast.success(`Chat "${data.name}" created successfully!`);
-    } catch (error) {
-      console.error('Error creating chat:', error);
-      toast.error('Failed to create chat');
-    }
-  }, [newChatName, project.id, supabase]);
-
-  // Delete chat
-  const deleteChat = useCallback(async (chatId: string, chatName: string) => {
-    try {
-      const { error } = await supabase.from('chat').delete().eq('id', chatId);
-      if (error) throw error;
-
-      setChats(prev => prev.filter(chat => chat.id !== chatId));
-      if (selectedChatId === chatId) {
-        setSelectedChatId('');
-        setMessages([]);
-      }
-      toast.success(`Chat "${chatName}" deleted`);
-    } catch (error) {
-      console.error('Error deleting chat:', error);
-      toast.error('Failed to delete chat');
-    }
-  }, [selectedChatId, supabase]);
 
   // Check message limits
   const checkMessageLimit = useCallback(async (): Promise<boolean> => {
@@ -624,10 +568,9 @@ const Chat = ({ project }: ChatProps) => {
   // Initialize data
   useEffect(() => {
     if (project.id) {
-      fetchChats();
       fetchAgents();
     }
-  }, [project.id, fetchChats, fetchAgents]);
+  }, [project.id, fetchAgents]);
 
   useEffect(() => {
     if (selectedChatId) {
@@ -661,113 +604,10 @@ const Chat = ({ project }: ChatProps) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [messages]);
 
+  const memoizedMessages = useMemo(() => messages, [messages]);
+
   return (
-    <div className="flex gap-4 overflow-hidden">
-      {/* Chat Sidebar */}
-      <div className="w-80 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-y-scroll">
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <Dialog open={newChatDialogOpen} onOpenChange={setNewChatDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="w-full cursor-pointer hover:scale-110">
-                <MessageCircle className="h-4 w-4 mr-2" />
-                New Chat
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Chat</DialogTitle>
-                <DialogDescription>
-                  Start a new conversation with your agents.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <Input
-                  placeholder="Chat name (e.g., 'Marketing Strategy Discussion')"
-                  value={newChatName}
-                  onChange={(e) => setNewChatName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && newChatName.trim()) {
-                      createNewChat();
-                    }
-                  }}
-                />
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setNewChatDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={createNewChat} disabled={!newChatName.trim()}>
-                  Create Chat
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        {/* Chat List */}
-        <div className="flex-1 overflow-y-auto p-2">
-          {chats.length === 0 ? (
-            <div className="text-center text-gray-500 mt-8 p-4">
-              <MessageCircle className="h-12 w-12 mx-auto mb-3 text-gray-400" />
-              <p className="font-medium">No chats yet</p>
-              <p className="text-sm mt-1">Create your first chat to get started</p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {chats.map((chat: any) => (
-                <div
-                  key={chat.id}
-                  className={`group p-3 rounded-xl cursor-pointer transition-all duration-200 hover:shadow-md ${selectedChatId === chat.id
-                    ? 'bg-black text-white shadow-lg dark:bg-white dark:text-black'
-                    : 'dark:bg-black hover:bg-gray-50 dark:hover:bg-gray-700'
-                    }`}
-                  onClick={() => setSelectedChatId(chat.id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-sm truncate flex-1 pr-2">
-                      {chat.name}
-                    </h4>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={`opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0 ${selectedChatId === chat.id
-                        ? 'hover:bg-white/20 text-white dark:text-black'
-                        : 'hover:bg-red-100 text-red-600'
-                        }`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteChat(chat.id, chat.name);
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                  <p className="text-xs mt-1">
-                    {chat.created_at ? new Date(chat.created_at).toLocaleDateString() : ''}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Connection Status */}
-        <div className="p-3 border-t border-gray-200 dark:border-gray-700">
-          <div className="flex items-center space-x-2 text-xs">
-            <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500' :
-              connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' :
-                'bg-red-500'
-              }`} />
-            <span className="text-gray-600 dark:text-gray-400">
-              {connectionStatus === 'connected' ? 'Connected' :
-                connectionStatus === 'connecting' ? 'Connecting...' :
-                  'Connection Error'}
-            </span>
-          </div>
-        </div>
-      </div>
-
+    <div className="">
       {/* Chat Area */}
       <div className="flex-1 flex flex-col">
         {!selectedChatId ? (
@@ -786,13 +626,6 @@ const Chat = ({ project }: ChatProps) => {
                   talk to specific agents.
                 </p>
               </div>
-              <Button
-                onClick={() => setNewChatDialogOpen(true)}
-                className="cursor-pointer px-6 py-3"
-              >
-                <MessageCircle className="h-4 w-4 mr-2" />
-                Start a new Chat
-              </Button>
             </div>
           </div>
         ) : (
@@ -800,7 +633,7 @@ const Chat = ({ project }: ChatProps) => {
             {/* Messages Area */}
             <div
               ref={chatContainerRef}
-              className="flex-1 overflow-y-auto p-3 max-h-[80vh]"
+              className="flex-1 overflow-y-auto p-3"
             >
               <div className="max-w-6xl mx-auto space-y-6">
                 {messages.length === 0 ? (
@@ -818,9 +651,9 @@ const Chat = ({ project }: ChatProps) => {
                   </div>
                 ) : (
                   <>
-                    {messages.map((message: ChatMessage, index: number) => (
+                    {memoizedMessages.map((message: ChatMessage, index: number) => (
                       <MessageBubble
-                        key={message.id || index}
+                        key={message.id} // Make sure you have stable IDs, not index
                         message={message}
                         agents={agents}
                         onRetry={message.role === 'assistant' && index === messages.length - 1 ? retryMessage : undefined}
@@ -847,8 +680,8 @@ const Chat = ({ project }: ChatProps) => {
             </div>
 
             {/* Message Input */}
-            <div className="border-t border-gray-200 dark:border-gray-700">
-              <div className="pt-3">
+            <div className="fixed max-w-[50%] m-auto bottom-3 right-0 left-0">
+              <div className="">
                 {/* Agent suggestions bar */}
                 {agents.length > 0 && !sendingMessage && (
                   <div className="mb-4">
@@ -875,10 +708,10 @@ const Chat = ({ project }: ChatProps) => {
                 )}
 
                 {/* Input area */}
-                <div className="flex gap-4 items-end">
+                <div className="flex gap-4 items-end ">
                   <div className="flex-1">
                     <MentionsInput
-                      className="w-full rounded-2xl border-2 border-gray-200 dark:border-gray-600 shadow-lg transition-all duration-300 ease-in-out focus-within:ring-4 focus-within:ring-blue-500/20 focus-within:border-blue-500 hover:shadow-xl"
+                      className="w-full rounded-2xl border-2 border-gray-200 dark:border-gray-600 bg-gray-100 shadow-lg transition-all duration-300 ease-in-out focus-within:ring-4 focus-within:ring-blue-500/20 focus-within:border-blue-500 hover:shadow-xl"
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
                       placeholder={
@@ -960,7 +793,7 @@ const Chat = ({ project }: ChatProps) => {
                   </div>
 
                   <Button
-                    className="h-14 w-14 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out transform hover:scale-105 focus:ring-4 focus:ring-blue-500/30 disabled:opacity-50 disabled:hover:scale-100 group"
+                    className="h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out disabled:opacity-50 disabled:hover:scale-100 group"
                     disabled={(!prompt.trim() && !sendingMessage) || agents.length === 0 || sendingMessage}
                     onClick={() => sendMessage()}
                   >

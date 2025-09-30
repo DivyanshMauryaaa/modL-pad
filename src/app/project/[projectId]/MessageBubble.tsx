@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react";
+import { useState, useCallback, useMemo, memo } from "react";
 import { Button } from "@/components/ui/button";
 import { Bot, RefreshCw, Save, Play, Pause, Download } from "lucide-react";
 import MarkdownRenderer from "./markdown";
@@ -15,21 +15,48 @@ interface MessageBubbleProps {
   responseStatus: 'loading' | 'completed' | 'error';
 }
 
-const MessageBubble = ({
+const MessageBubble = memo(function MessageBubble({
   message,
   agents,
   onRetry,
   projectId,
   chatId,
   responseStatus
-}: MessageBubbleProps) => {
+}: MessageBubbleProps) {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
-  const [responseLoading, setResponseLoading] = useState(responseStatus);
 
-  // Handle different output types
-  const renderMediaContent = () => {
+  // Memoize event handlers
+  const handleTimeUpdate = useCallback((e: React.SyntheticEvent<HTMLAudioElement>) => {
+    const audio = e.currentTarget;
+    const progress = (audio.currentTime / audio.duration) * 100;
+    setAudioProgress(progress);
+  }, []);
+
+  const handlePlayPause = useCallback(() => {
+    setIsPlaying(!isPlaying);
+  }, [isPlaying]);
+
+  const handleAudioEnd = useCallback(() => {
+    setIsPlaying(false);
+    setAudioProgress(0);
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    const link = document.createElement('a');
+    link.href = message.media_url;
+    
+    const extension = message.output_type === 'image' ? 'png' : 
+                    message.output_type === 'video' ? 'mp4' : 
+                    message.output_type === 'audio' ? 'mp3' : 'txt';
+    
+    link.download = `${message.output_type}-${message.id}.${extension}`;
+    link.click();
+  }, [message.media_url, message.output_type, message.id]);
+
+  // Memoize media content rendering
+  const renderMediaContent = useCallback(() => {
     switch (message.output_type) {
       case 'image':
         return (
@@ -44,12 +71,12 @@ const MessageBubble = ({
             />
             {message.content && (
               <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                <MarkdownRenderer 
-                    content={message.content} 
-                    projectId={projectId}
-                    agentId={message.agent_id}
-                    chatId={chatId}
-                    originalMessageId={message.id}
+                <MemoizedMarkdownRenderer 
+                  content={message.content} 
+                  projectId={projectId}
+                  agentId={message.agent_id}
+                  chatId={chatId}
+                  originalMessageId={message.id}
                 />
               </div>
             )}
@@ -71,12 +98,12 @@ const MessageBubble = ({
             </video>
             {message.content && (
               <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                <MarkdownRenderer 
-                    content={message.content} 
-                    projectId={projectId}
-                    agentId={message.agent_id}
-                    chatId={chatId}
-                    originalMessageId={message.id}
+                <MemoizedMarkdownRenderer 
+                  content={message.content} 
+                  projectId={projectId}
+                  agentId={message.agent_id}
+                  chatId={chatId}
+                  originalMessageId={message.id}
                 />
               </div>
             )}
@@ -90,7 +117,7 @@ const MessageBubble = ({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setIsPlaying(!isPlaying)}
+                onClick={handlePlayPause}
                 className="rounded-full w-10 h-10 p-0"
               >
                 {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -108,12 +135,7 @@ const MessageBubble = ({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  const link = document.createElement('a');
-                  link.href = message.media_url;
-                  link.download = `audio-${message.id}.mp3`;
-                  link.click();
-                }}
+                onClick={handleDownload}
               >
                 <Download className="h-4 w-4" />
               </Button>
@@ -123,12 +145,8 @@ const MessageBubble = ({
               src={message.media_url}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
-              onEnded={() => setIsPlaying(false)}
-              onTimeUpdate={(e) => {
-                const audio = e.currentTarget;
-                const progress = (audio.currentTime / audio.duration) * 100;
-                setAudioProgress(progress);
-              }}
+              onEnded={handleAudioEnd}
+              onTimeUpdate={handleTimeUpdate}
               onError={(e) => {
                 console.error('Audio loading error:', e);
               }}
@@ -136,12 +154,12 @@ const MessageBubble = ({
             
             {message.content && (
               <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                <MarkdownRenderer 
-                    content={message.content} 
-                    projectId={projectId}
-                    agentId={message.agent_id}
-                    chatId={chatId}
-                    originalMessageId={message.id}
+                <MemoizedMarkdownRenderer 
+                  content={message.content} 
+                  projectId={projectId}
+                  agentId={message.agent_id}
+                  chatId={chatId}
+                  originalMessageId={message.id}
                 />
               </div>
             )}
@@ -149,24 +167,24 @@ const MessageBubble = ({
         );
 
       default: // text
-        return <MarkdownRenderer 
-                    content={message.content} 
-                    projectId={projectId}
-                    agentId={message.agent_id}
-                    chatId={chatId}
-                    originalMessageId={message.id}
+        return <MemoizedMarkdownRenderer 
+                  content={message.content} 
+                  projectId={projectId}
+                  agentId={message.agent_id}
+                  chatId={chatId}
+                  originalMessageId={message.id}
                 />;
     }
-  };
+  }, [message, projectId, chatId, isPlaying, audioProgress, handlePlayPause, handleDownload, handleAudioEnd, handleTimeUpdate]);
 
-  const getAgentName = () => {
+  // Memoize agent name
+  const agentName = useMemo(() => {
     if (message.role !== 'assistant' || message.isError) return null;
-    
     const agent = agents.find(a => a.id === message.agent_id);
-    if (!agent) return 'AI Assistant';
-    
-    return `${agent.name} (${agent.output_type})`;
-  };
+    return agent ? `${agent.name} (${agent.output_type})` : 'AI Assistant';
+  }, [message.role, message.isError, message.agent_id, agents]);
+
+  const mediaContent = useMemo(() => renderMediaContent(), [renderMediaContent]);
 
   return (
     <>
@@ -184,7 +202,7 @@ const MessageBubble = ({
                 <div className="flex items-center gap-2 mb-2">
                   <Bot className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                    {getAgentName()}
+                    {agentName}
                   </span>
                 </div>
               )}
@@ -192,7 +210,7 @@ const MessageBubble = ({
               {message.isError ? (
                 <div dangerouslySetInnerHTML={{ __html: message.content }} />
               ) : (
-                renderMediaContent()
+                mediaContent
               )}
             </div>
           </div>
@@ -224,23 +242,11 @@ const MessageBubble = ({
               </Button>
             )}
 
-            {/* Download button for media */}
             {message.role === 'assistant' && !message.isError && message.media_url && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  const link = document.createElement('a');
-                  link.href = message.media_url;
-                  
-                  // Set appropriate file extension based on output type
-                  const extension = message.output_type === 'image' ? 'png' : 
-                                  message.output_type === 'video' ? 'mp4' : 
-                                  message.output_type === 'audio' ? 'mp3' : 'txt';
-                  
-                  link.download = `${message.output_type}-${message.id}.${extension}`;
-                  link.click();
-                }}
+                onClick={handleDownload}
                 className="h-8"
                 title={`Download ${message.output_type}`}
               >
@@ -251,7 +257,6 @@ const MessageBubble = ({
         </div>
       </div>
 
-      {/* Save Response Dialog */}
       <SaveResponseDialog
         open={saveDialogOpen}
         onOpenChange={setSaveDialogOpen}
@@ -263,6 +268,9 @@ const MessageBubble = ({
       />
     </>
   );
-};
+});
+
+// Also memoize your MarkdownRenderer
+const MemoizedMarkdownRenderer = memo(MarkdownRenderer);
 
 export default MessageBubble;

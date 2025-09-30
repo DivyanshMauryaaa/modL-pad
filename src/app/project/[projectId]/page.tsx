@@ -27,42 +27,36 @@ import MonacoEditorComponent from '@/components/codeEditorMonaco';
 // Tab Components
 const OverviewTab = ({ project }: { project: any }) => (
     <div className="space-y-6">
-        <h2 className="text-3xl font-bold">Project Overview</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-4 rounded-lg border">
-                <h3 className="text-lg font-semibold mb-2">Project Details</h3>
-                <p><strong>Title:</strong> {project.title}</p>
-                <p><strong>Created:</strong> {project.created_at ? new Date(project.created_at).toLocaleDateString() : 'N/A'}</p>
-                <p><strong>Status:</strong> {project.status || 'Active'}</p>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+            <p className='text-4xl'>{project.title}</p>
         </div>
-        <div className='flex gap-3'>
-            <Link href={`/project/${project.id}?tab=chat`} className='w-[200px]'>
-                <Card>
+        <div className='flex gap-3 max-h-[500px]'>
+            <Link href={`/project/${project.id}?tab=chat`} className='w-[20%] h-[80%] px-3'>
+                <Card className="bg-transparent shadow-none border border-gray-300  hover:border-black transition-all duration-300 ">
                     <CardHeader>
                         <MessageCircle />
                         <CardTitle>Chat</CardTitle>
                     </CardHeader>
                 </Card>
             </Link>
-            <Link href={`/project/${project.id}?tab=responseLib`} className='w-[200px]'>
-                <Card>
+            <Link href={`/project/${project.id}?tab=responseLib`} className='w-[20%] h-[80%] px-3'>
+                <Card className="bg-transparent shadow-none border border-gray-300  hover:border-black transition-all duration-300 ">
                     <CardHeader>
                         <Folder />
                         <CardTitle>Response Library</CardTitle>
                     </CardHeader>
                 </Card>
             </Link>
-            <Link href={`/project/${project.id}?tab=agents`} className='w-[200px]'>
-                <Card>
+            <Link href={`/project/${project.id}?tab=agents`} className='w-[20%] h-[80%] px-3'>
+                <Card className="bg-transparent shadow-none border border-gray-300  hover:border-black transition-all duration-300 ">
                     <CardHeader>
                         <Bot />
                         <CardTitle>Agents</CardTitle>
                     </CardHeader>
                 </Card>
             </Link>
-            <Link href={`/project/${project.id}?tab=settings`} className='w-[200px]'>
-                <Card>
+            <Link href={`/project/${project.id}?tab=settings`} className='w-[20%] h-[80%] px-3'>
+                <Card className="bg-transparent shadow-none border border-gray-300  hover:border-black transition-all duration-300 ">
                     <CardHeader>
                         <Settings />
                         <CardTitle>Settings</CardTitle>

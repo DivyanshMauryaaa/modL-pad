@@ -53,6 +53,7 @@ const MessageBubble = memo(function MessageBubble({
                     message.output_type === 'audio' ? 'mp3' : 'txt';
     
     link.download = `${message.output_type}-${message.id}.${extension}`;
+    link.target = "_blank"
     link.click();
   }, [message.media_url, message.output_type, message.id]);
 

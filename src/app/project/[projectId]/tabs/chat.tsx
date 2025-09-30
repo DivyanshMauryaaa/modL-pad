@@ -680,7 +680,7 @@ const Chat = ({ project, selectedChatId, onChatSelect, chats, onChatsUpdate }: C
             </div>
 
             {/* Message Input */}
-            <div className="fixed max-w-[50%] m-auto bottom-3 right-0 left-0">
+            <div className="fixed max-w-[50%] m-auto bottom-3 right-0 left-0 bg-gray-100 dark:bg-gray-950">
               <div className="">
                 {/* Agent suggestions bar */}
                 {agents.length > 0 && !sendingMessage && (
@@ -711,7 +711,7 @@ const Chat = ({ project, selectedChatId, onChatSelect, chats, onChatsUpdate }: C
                 <div className="flex gap-4 items-end ">
                   <div className="flex-1">
                     <MentionsInput
-                      className="w-full rounded-2xl border-2 border-gray-200 dark:border-gray-600 bg-gray-100 shadow-lg transition-all duration-300 ease-in-out focus-within:ring-4 focus-within:ring-blue-500/20 focus-within:border-blue-500 hover:shadow-xl"
+                      className="w-full rounded-2xl border-2 bg-gray-100 dark:bg-gray-950 dark:border-gray-600 bg-gray-100 shadow-lg transition-all duration-300 ease-in-out focus-within:ring-4 focus-within:ring-blue-500/20 focus-within:border-blue-500 hover:shadow-xl"
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
                       placeholder={

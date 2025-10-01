@@ -677,18 +677,18 @@ const Chat = ({ project, selectedChatId, onChatSelect, chats, onChatsUpdate }: C
                 )}
                 <div ref={messagesEndRef} />
               </div>
+              <br /><br /><br />
+              <br /><br /><br />
+              <br /><br /><br />
+              
             </div>
 
             {/* Message Input */}
-            <div className="fixed max-w-[50%] m-auto bottom-3 right-0 left-0 bg-gray-100 dark:bg-gray-950">
+            <div className="fixed max-w-[50%] m-auto bottom-3 right-0 left-0 bg-transparent">
               <div className="">
                 {/* Agent suggestions bar */}
                 {agents.length > 0 && !sendingMessage && (
                   <div className="mb-4">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <Sparkles className="h-4 w-4 text-gray-500" />
-                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Available Agents:</span>
-                    </div>
                     <div className="flex flex-wrap gap-2">
                       {agents.map(agent => (
                         <button

@@ -47,11 +47,11 @@ const MessageBubble = memo(function MessageBubble({
     const link = document.createElement('a');
     link.href = message.media_url;
     link.download = "true";
-    
-    const extension = message.output_type === 'image' ? 'png' : 
-                    message.output_type === 'video' ? 'mp4' : 
-                    message.output_type === 'audio' ? 'mp3' : 'txt';
-    
+
+    const extension = message.output_type === 'image' ? 'png' :
+      message.output_type === 'video' ? 'mp4' :
+        message.output_type === 'audio' ? 'mp3' : 'txt';
+
     link.download = `${message.output_type}-${message.id}.${extension}`;
     link.target = "_blank"
     link.click();
@@ -73,8 +73,8 @@ const MessageBubble = memo(function MessageBubble({
             />
             {message.content && (
               <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                <MemoizedMarkdownRenderer 
-                  content={message.content} 
+                <MemoizedMarkdownRenderer
+                  content={message.content}
                   projectId={projectId}
                   agentId={message.agent_id}
                   chatId={chatId}
@@ -100,8 +100,8 @@ const MessageBubble = memo(function MessageBubble({
             </video>
             {message.content && (
               <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                <MemoizedMarkdownRenderer 
-                  content={message.content} 
+                <MemoizedMarkdownRenderer
+                  content={message.content}
                   projectId={projectId}
                   agentId={message.agent_id}
                   chatId={chatId}
@@ -124,7 +124,7 @@ const MessageBubble = memo(function MessageBubble({
               >
                 {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </Button>
-              
+
               <div className="flex-1">
                 <div className="w-full bg-gray-300 dark:bg-gray-600 rounded-full h-2">
                   <div
@@ -133,7 +133,7 @@ const MessageBubble = memo(function MessageBubble({
                   />
                 </div>
               </div>
-              
+
               <Button
                 variant="ghost"
                 size="sm"
@@ -142,7 +142,7 @@ const MessageBubble = memo(function MessageBubble({
                 <Download className="h-4 w-4" />
               </Button>
             </div>
-            
+
             <audio
               src={message.media_url}
               onPlay={() => setIsPlaying(true)}
@@ -153,11 +153,11 @@ const MessageBubble = memo(function MessageBubble({
                 console.error('Audio loading error:', e);
               }}
             />
-            
+
             {message.content && (
               <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                <MemoizedMarkdownRenderer 
-                  content={message.content} 
+                <MemoizedMarkdownRenderer
+                  content={message.content}
                   projectId={projectId}
                   agentId={message.agent_id}
                   chatId={chatId}
@@ -169,13 +169,13 @@ const MessageBubble = memo(function MessageBubble({
         );
 
       default: // text
-        return <MemoizedMarkdownRenderer 
-                  content={message.content} 
-                  projectId={projectId}
-                  agentId={message.agent_id}
-                  chatId={chatId}
-                  originalMessageId={message.id}
-                />;
+        return <MemoizedMarkdownRenderer
+          content={message.content}
+          projectId={projectId}
+          agentId={message.agent_id}
+          chatId={chatId}
+          originalMessageId={message.id}
+        />;
     }
   }, [message, projectId, chatId, isPlaying, audioProgress, handlePlayPause, handleDownload, handleAudioEnd, handleTimeUpdate]);
 
@@ -186,25 +186,33 @@ const MessageBubble = memo(function MessageBubble({
     return agent ? `${agent.name} (${agent.output_type})` : 'AI Assistant';
   }, [message.role, message.isError, message.agent_id, agents]);
 
+  const agentModel = useMemo(() => {
+    if (message.role !== 'assistant' || message.isError) return null;
+    const agent = agents.find(a => a.id === message.agent_id);
+    return agent ? `${agent.model}` : 'invalid model';
+  }, [message.role, message.isError, message.agent_id, agents]);
+
   const mediaContent = useMemo(() => renderMediaContent(), [renderMediaContent]);
 
   return (
     <>
       <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-        <div className={`max-w-[90%] rounded-2xl p-4 chat-message ${
-          message.role === 'user'
-            ? 'bg-card'
+        <div className={`max-w-[90%] p-4 ${message.role === 'user'
+            ? 'text-lg border bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700'
             : message.isError
-            ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300'
-            : 'bg-card'
-        }`}>
+              ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300'
+              : 'bg-transparent border-b border-t border-gray-300 dark:border-gray-700 rounded-none'
+          }`}>
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
               {message.role === 'assistant' && !message.isError && (
-                <div className="flex items-center gap-2 mb-2">
+                <div className="gap-2 mb-2 flex">
                   <Bot className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
                     {agentName}
+                  </span>
+                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    using {agentModel}
                   </span>
                 </div>
               )}
@@ -231,7 +239,7 @@ const MessageBubble = memo(function MessageBubble({
                 <RefreshCw className="h-3 w-3 mr-1" />
               </Button>
             )}
-            
+
             {message.role === 'assistant' && !message.isError && message.output_type === 'text' && (
               <Button
                 variant="secondary"

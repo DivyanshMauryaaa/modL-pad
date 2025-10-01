@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
-import { Github, Sparkles, MessageSquare, Zap, ArrowRight, Star, Brain, Clock, Shield, Folder, Bot } from 'lucide-react';
+import { Github, Sparkles, MessageSquare, Zap, ArrowRight, Star, Brain, Clock, Shield, Folder, Bot, Link, Check } from 'lucide-react';
 import Image from 'next/image';
+import { Button } from '@/components/ui/button';
 
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
@@ -188,7 +189,36 @@ export default function LandingPage() {
             Get Started Free
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </a>
-          <p className="text-sm text-gray-500 mt-4">Open source • Self-hosted • Full control</p>
+          <p className="text-sm text-gray-500 mt-4">Open source • Time-saving • Full control</p>
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section className="py-20 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-4xl md:text-5xl font-bold mb-6 bg-gradient-to-b from-white to-gray-500 bg-clip-text text-transparent">
+            Transparent, Scalable Pricing
+          </h2>
+        </div>
+        <div className="grid md:grid-cols-3 gap-8 mt-5">
+          {[
+            { title: "Free", price: "0", features: ["3 Messages per day", "3 folders", "10 saved responses", "Limited models", "3 Agents", "No Media Models"] },
+            { title: "Pro", price: "20", features: ["Higher Limits", "Unlimited folders", "Unlimited saved responses", "Pro Models access", "Unlimited Agents", "Image Models"] },
+            { title: "Max", price: "200", features: ["Unlimited Messages", "Unlimited folders", "Unlimited saved responses", "All models access", "Unlimited Agents", "Text, Image, Video Models"] }
+          ].map((item, i) => (
+            <div key={i} className="border dark:border-gray-700 rounded-xl p-6 border-gray-300">
+              <h3 className="text-2xl mb-3">{item.title}</h3>
+              <p className="text-gray-400 font-semibold text-6xl">${item.price}<span className='text-sm'>/mo</span></p>
+              
+              <div className="space-y-2 text-sm mb-6 mt-6 border-t border-gray-300 dark:border-gray-700 pt-6">
+                {item.features.map((feature, i) => (
+                  <div key={i} className="flex items-center gap-2"><Check className="w-4 h-4" />{feature}</div>
+                ))}
+              </div>
+
+              <Button size={'lg'} className='w-full'>Sign Up</Button>
+            </div>
+          ))}
         </div>
       </section>
 

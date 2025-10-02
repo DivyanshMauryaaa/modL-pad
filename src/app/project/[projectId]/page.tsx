@@ -5,7 +5,7 @@ import { Dialog, DialogTitle, DialogContent, DialogHeader, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import supabase from '@/lib/supabase';
 import { useUser } from '@clerk/nextjs';
-import { ArrowLeft, BlocksIcon, Bot, ChevronDown, ChevronRight, Code, Edit3, FileText, Folder, FolderPlus, Home, Loader2, MessageCircle, Move, Save, Settings, Sparkles, Trash2, X, ZoomIn } from 'lucide-react';
+import { ArrowLeft, BlocksIcon, Bot, ChevronDown, ChevronRight, Code, Edit3, FilePlus, FileText, Folder, FolderPlus, Home, Loader2, MessageCircle, Move, Save, Settings, Sparkles, Trash2, X, ZoomIn } from 'lucide-react';
 import { WebSearchResults, SaveResponseDialog } from './SharedComponents';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
@@ -537,6 +537,29 @@ const ResponseLibrary = ({ project }: { project: any }) => {
         }
     }
 
+    const addCustomResponse = async () => {
+        try {
+            setLoading(true);
+            const { error } = await supabase.from('saved_responses').insert({
+                project_id: project.id,
+                title: "New Response",
+                type: 'md',
+                content: "New Response",
+                folder_id: currentFolder?.id || null,
+            });
+
+            if (error) throw error;
+            toast.success('Custom response added successfully!');
+        } catch (error) {
+            console.error('Error adding custom response:', error);
+            toast.error('Failed to add custom response');
+        } finally {
+            setLoading(false);
+        }
+
+        fetchSavedResponses(currentFolder?.id || null);
+    }
+
     const navigateToFolder = async (folder: any) => {
         setCurrentFolder(folder);
         setBreadcrumb(prev => [...prev, folder]);
@@ -711,6 +734,10 @@ const ResponseLibrary = ({ project }: { project: any }) => {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+            
+                <Button onClick={addCustomResponse} className='flex gap-2 cursor-pointer'>
+                    <FilePlus size={18} /> Add Custom Response
+                </Button>
             </div>
 
             {loading ? (
